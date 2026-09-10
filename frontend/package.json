@@ -14,7 +14,7 @@
     "@daily-co/daily-js": "^0.87.0",
     "canvas-confetti": "^1.9.4",
     "lucide-react": "^1.30.0",
-    "motion": "^13.1.0",
+    "motion": "^13.2.0",
     "next": "16.3.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
