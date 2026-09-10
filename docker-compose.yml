@@ -1,0 +1,57 @@
+# Local stack that matches the deployment: the API against PostgreSQL, not the
+# SQLite file used for day-to-day development. Run it before pushing anything
+# that touches the schema — `make migrate` on SQLite proves less than it looks.
+#
+# The frontend is not here on purpose: it is deployed to Vercel (docs/operations/deployment.md),
+# and a second Dockerfile for Next.js would be a build to maintain that nothing
+# in production would ever use. Run it with `npm run dev` alongside.
+
+services:
+  postgres:
+    # The assistant's semantic retrieval stores/query vectors, so plain
+    # PostgreSQL is insufficient: it lacks the server-side pgvector library.
+    image: pgvector/pgvector:pg16
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: linguaflow
+      POSTGRES_PASSWORD: linguaflow
+      POSTGRES_DB: linguaflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linguaflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Overrides whatever .env says, because .env points at the local SQLite
+      # file and the container cannot reach the developer's disk.
+      DATABASE_URL: postgresql+asyncpg://linguaflow:linguaflow@postgres:5432/linguaflow
+      UPLOAD_DIR: /app/data/uploads
+    volumes:
+      # Uploaded files only. The database now lives in the postgres service.
+      - backend-uploads:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres-data:
+  backend-uploads:

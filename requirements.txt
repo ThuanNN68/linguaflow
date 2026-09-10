@@ -1,0 +1,110 @@
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+# Request rate limiting and WebSocket fan-out use Redis when REDIS_URL is set;
+# a single-process development run intentionally falls back to memory.
+slowapi>=0.1.9,<0.2.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.9
+
+# AI / LangChain
+langchain>=0.3.0
+langgraph>=0.2.0
+# LLM providers — xem LLM_PROVIDER trong .env (langchain-openai dùng cho cả OpenAI và DeepSeek)
+langchain-openai>=0.3.0
+langchain-groq>=0.2.0
+langchain-google-genai>=2.0.0
+# Direct dependency for the Files + Interactions APIs used by the dedicated
+# Gemini 3.5 Transcribe adapter. It is also pulled transitively by recent
+# langchain-google-genai releases, but older compatible releases do not expose
+# the Interactions API contract this service requires.
+google-genai==2.18.1
+# Direct SDK for the independent OpenAI STT fallback.
+openai>=1.68.0
+# Platform wheels bundle the FFmpeg executable (~25-31 MiB) used only for
+# bounded STT preprocessing of browser-native WebM/Opus, OGG/Opus and MP4/AAC.
+# This avoids the much larger Debian multimedia dependency closure while
+# keeping local and container behavior identical.
+imageio-ffmpeg>=0.6.0,<0.7.0
+langchain-mistralai>=0.2.0
+# Observability cho Agent (F-03.4). Backend chon bang OBSERVABILITY_PROVIDER;
+# mac dinh la Braintrust (ADR-29). Tich hop LangChain nam trong chinh goi
+# braintrust — goi rieng braintrust-langchain da bi khai tu.
+braintrust>=0.34.0
+# Langfuse van giu de chon lai duoc. API CallbackHandler khac nhau giua cac major
+# version — module src/agents/observability.py viet theo v4.
+langfuse>=4.0.0,<5.0.0
+# Vendor-neutral request/database tracing, enabled only with OTEL_ENABLED=true.
+opentelemetry-api>=1.30.0,<2.0.0
+opentelemetry-sdk>=1.30.0,<2.0.0
+opentelemetry-exporter-otlp-proto-http>=1.30.0,<2.0.0
+opentelemetry-instrumentation-fastapi>=0.51b0,<1.0.0
+opentelemetry-instrumentation-sqlalchemy>=0.51b0,<1.0.0
+opentelemetry-instrumentation-httpx>=0.51b0,<1.0.0
+# Nhan dien ngon ngu cuc bo (~1ms), giam so lan goi LLM detect
+langdetect>=1.0.9
+# Provider dich du phong khi LLM loi (ADR-07) — khong can API key
+deep-translator>=1.11.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.0
+aiosqlite>=0.20.0
+# Windows does not ship the IANA timezone database required for securely
+# resolving user-confirmed schedule times such as Asia/Ho_Chi_Minh.
+tzdata>=2025.2
+# Migrations — bat buoc tu khi trien khai that: create_all khong ALTER duoc bang
+# da ton tai, xoa co so du lieu de doi schema la mat du lieu nguoi dung (ADR-06).
+alembic>=1.14.0
+# Driver PostgreSQL bat dong bo. Phai la asyncpg chu khong phai psycopg2:
+# create_async_engine khong mo duoc URL cua driver dong bo.
+asyncpg>=0.30.0
+# Kieu cot `vector` va cac toan tu khoang cach cua pgvector cho SQLAlchemy.
+# Glossary, correction_log va message_embeddings deu tim theo cosine (ADR-22).
+pgvector>=0.3.0
+
+# Sinh vector nhung (ADR-25). Gemini va OpenAI dung lai langchain-google-genai
+# va langchain-openai da khai bao o khoi AI/LangChain ben tren, khong can them
+# gi. Hai goi duoi day phuc vu EMBEDDING_PROVIDER=local, nay la tang du phong
+# khi provider hosted het quota (EMBEDDING_FALLBACK_PROVIDER). Chung keo theo
+# torch (~500MB) vao image — do la cai gia da chon de mot han muc can khong lam
+# dut dich vu; bo dong nay neu trien khai chap nhan mat khop ngu nghia luc do.
+langchain-huggingface>=0.1.0
+sentence-transformers>=3.0.0
+
+# Vector Store (uncomment as needed)
+# chromadb>=0.5.0
+
+# Dong ho cho hang doi nhac viec (ADR-33). Chi la bo dinh thi: hang doi nam o
+# bang `reminders` trong PostgreSQL, khong dung job store cua APScheduler — mot
+# bang thi tu bat kip sau khi tien trinh tat, con job store thi khong. De bai
+# goi y BullMQ nhung do la thu vien Node; day la thu tuong duong ben Python.
+apscheduler>=3.10.0
+# Cross-platform RSS metric for the admin system-health endpoint. Linux still
+# uses /proc first, while Windows relies on this portable fallback.
+psutil>=6.0.0
+# Optional cross-process WebSocket pub/sub backplane (activated by REDIS_URL).
+redis>=5.2.0,<6.0.0
+
+# S3-compatible attachment storage (AWS S3, R2, MinIO, and peers).
+boto3>=1.35.0,<2.0.0
+# Standards-based PWA Web Push; imported lazily only when VAPID is configured.
+pywebpush>=2.0.3,<3.0.0
+
+# Authentication
+PyJWT[crypto]>=2.10.0,<3.0.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0
+# Xac minh ID token cua Google Sign-In (Batch G).
+google-auth>=2.0.0
+
+# Dev tools
+# Chi so dich may doi chieu tham chieu cho eval/: chrF++, BLEU, TER. Thuan
+# Python, chay offline, khong ton quota — dung de bo sung cho diem LLM-judge
+# chu khong thay the no (ADR-17).
+sacrebleu>=2.4.0
+ruff>=0.8.0
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+httpx>=0.28.0
