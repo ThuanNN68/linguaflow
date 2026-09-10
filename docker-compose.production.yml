@@ -1,0 +1,99 @@
+# Public production stack. Only Caddy publishes ports; the application and
+# database remain on Docker's private network.
+# The production command must still pass `-p linguaflow` explicitly. Keeping
+# this name here protects the durable default-network and volume identities
+# when a release manifest is used from a new directory.
+name: linguaflow
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    # GHCR path components are lowercase because OCI/Docker image references
+    # are normalized that way. RELEASE_SHA is a required full 40-character
+    # commit SHA supplied by the release command, never `latest`.
+    image: ${LINGUAFLOW_BACKEND_IMAGE:-ghcr.io/linguaflow/linguaflow-backend}:${RELEASE_SHA:?RELEASE_SHA must be a full 40-character commit SHA}
+    env_file:
+      # Runtime secrets stay on the VPS. The variable is only a local static
+      # validation escape hatch; production uses the fixed default path.
+      - ${LINGUAFLOW_RUNTIME_ENV_FILE:-/etc/linguaflow/production.env}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      UPLOAD_DIR: /app/data/uploads
+      APP_ENV: production
+      ENVIRONMENT: production
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+      DATABASE_POOL_RECYCLE_SECONDS: ${DATABASE_POOL_RECYCLE_SECONDS:-900}
+      DATABASE_POOL_TIMEOUT_SECONDS: ${DATABASE_POOL_TIMEOUT_SECONDS:-30}
+    volumes:
+      - backend-uploads:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    # NEXT_PUBLIC_* values are compiled into this immutable image by the future
+    # GitHub Actions build job. They are not VPS runtime variables.
+    image: ${LINGUAFLOW_FRONTEND_IMAGE:-ghcr.io/linguaflow/linguaflow-frontend}:${RELEASE_SHA:?RELEASE_SHA must be a full 40-character commit SHA}
+    environment:
+      NODE_ENV: production
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL}
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  backend-uploads:
+  caddy-data:
+  caddy-config:

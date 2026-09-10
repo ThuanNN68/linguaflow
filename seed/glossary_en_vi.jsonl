@@ -1,0 +1,70 @@
+{"source_term":"UI","target_term":"UI","source_language":"en","target_language":"vi","domain":"software","audience":"internal","keep_verbatim":true}
+{"source_term":"UI","target_term":"giao diện","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"UX","target_term":"UX","source_language":"en","target_language":"vi","domain":"software","audience":"internal","keep_verbatim":true}
+{"source_term":"API","target_term":"API","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":true}
+{"source_term":"SDK","target_term":"SDK","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":true}
+{"source_term":"WebSocket","target_term":"WebSocket","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":true}
+{"source_term":"PostgreSQL","target_term":"PostgreSQL","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":true}
+{"source_term":"pgvector","target_term":"pgvector","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":true}
+{"source_term":"Redis","target_term":"Redis","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":true}
+{"source_term":"Docker","target_term":"Docker","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":true}
+{"source_term":"Kubernetes","target_term":"Kubernetes","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":true}
+{"source_term":"frontend","target_term":"giao diện người dùng","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"backend","target_term":"hệ thống phía máy chủ","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"database","target_term":"cơ sở dữ liệu","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"deployment","target_term":"triển khai","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"staging","target_term":"môi trường thử nghiệm","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"production","target_term":"môi trường vận hành","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"migration","target_term":"chuyển đổi lược đồ","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"schema","target_term":"lược đồ","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"rollback","target_term":"hoàn tác","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"release","target_term":"bản phát hành","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"hotfix","target_term":"bản sửa lỗi khẩn cấp","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"pull request","target_term":"yêu cầu hợp nhất mã","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"code review","target_term":"rà soát mã nguồn","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"unit test","target_term":"kiểm thử đơn vị","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"integration test","target_term":"kiểm thử tích hợp","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"end-to-end test","target_term":"kiểm thử đầu cuối","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"smoke test","target_term":"kiểm thử nhanh","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"test coverage","target_term":"độ bao phủ kiểm thử","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"bug","target_term":"lỗi phần mềm","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"issue","target_term":"vấn đề","source_language":"en","target_language":"vi","domain":"software","audience":"client","keep_verbatim":false}
+{"source_term":"feature","target_term":"tính năng","source_language":"en","target_language":"vi","domain":"software","audience":"","keep_verbatim":false}
+{"source_term":"authentication","target_term":"xác thực","source_language":"en","target_language":"vi","domain":"security","audience":"","keep_verbatim":false}
+{"source_term":"authorization","target_term":"phân quyền","source_language":"en","target_language":"vi","domain":"security","audience":"","keep_verbatim":false}
+{"source_term":"access token","target_term":"mã truy cập","source_language":"en","target_language":"vi","domain":"security","audience":"client","keep_verbatim":false}
+{"source_term":"refresh token","target_term":"mã làm mới","source_language":"en","target_language":"vi","domain":"security","audience":"client","keep_verbatim":false}
+{"source_term":"rate limit","target_term":"giới hạn tần suất","source_language":"en","target_language":"vi","domain":"security","audience":"","keep_verbatim":false}
+{"source_term":"encryption","target_term":"mã hóa","source_language":"en","target_language":"vi","domain":"security","audience":"","keep_verbatim":false}
+{"source_term":"secret","target_term":"thông tin bí mật","source_language":"en","target_language":"vi","domain":"security","audience":"client","keep_verbatim":false}
+{"source_term":"backup","target_term":"bản sao lưu","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"restore","target_term":"khôi phục","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"health check","target_term":"kiểm tra tình trạng","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"uptime","target_term":"thời gian hoạt động","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"downtime","target_term":"thời gian gián đoạn","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"incident","target_term":"sự cố","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"latency","target_term":"độ trễ","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"throughput","target_term":"thông lượng","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"connection pool","target_term":"nhóm kết nối","source_language":"en","target_language":"vi","domain":"operations","audience":"client","keep_verbatim":false}
+{"source_term":"timeout","target_term":"hết thời gian chờ","source_language":"en","target_language":"vi","domain":"operations","audience":"client","keep_verbatim":false}
+{"source_term":"retry","target_term":"thử lại","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"circuit breaker","target_term":"bộ ngắt mạch","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"queue","target_term":"hàng đợi","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"worker","target_term":"tiến trình xử lý","source_language":"en","target_language":"vi","domain":"operations","audience":"client","keep_verbatim":false}
+{"source_term":"heartbeat","target_term":"tín hiệu duy trì","source_language":"en","target_language":"vi","domain":"operations","audience":"client","keep_verbatim":false}
+{"source_term":"object storage","target_term":"kho lưu trữ đối tượng","source_language":"en","target_language":"vi","domain":"operations","audience":"","keep_verbatim":false}
+{"source_term":"attachment","target_term":"tệp đính kèm","source_language":"en","target_language":"vi","domain":"messaging","audience":"","keep_verbatim":false}
+{"source_term":"voice message","target_term":"tin nhắn thoại","source_language":"en","target_language":"vi","domain":"messaging","audience":"","keep_verbatim":false}
+{"source_term":"transcription","target_term":"bản chép lời","source_language":"en","target_language":"vi","domain":"messaging","audience":"","keep_verbatim":false}
+{"source_term":"speech-to-text","target_term":"chuyển giọng nói thành văn bản","source_language":"en","target_language":"vi","domain":"messaging","audience":"","keep_verbatim":false}
+{"source_term":"text-to-speech","target_term":"chuyển văn bản thành giọng nói","source_language":"en","target_language":"vi","domain":"messaging","audience":"","keep_verbatim":false}
+{"source_term":"translation memory","target_term":"bộ nhớ dịch","source_language":"en","target_language":"vi","domain":"localization","audience":"","keep_verbatim":false}
+{"source_term":"glossary","target_term":"bảng thuật ngữ","source_language":"en","target_language":"vi","domain":"localization","audience":"","keep_verbatim":false}
+{"source_term":"source language","target_term":"ngôn ngữ nguồn","source_language":"en","target_language":"vi","domain":"localization","audience":"","keep_verbatim":false}
+{"source_term":"target language","target_term":"ngôn ngữ đích","source_language":"en","target_language":"vi","domain":"localization","audience":"","keep_verbatim":false}
+{"source_term":"quality assurance","target_term":"đảm bảo chất lượng","source_language":"en","target_language":"vi","domain":"business","audience":"","keep_verbatim":false}
+{"source_term":"acceptance criteria","target_term":"tiêu chí nghiệm thu","source_language":"en","target_language":"vi","domain":"business","audience":"","keep_verbatim":false}
+{"source_term":"stakeholder","target_term":"bên liên quan","source_language":"en","target_language":"vi","domain":"business","audience":"","keep_verbatim":false}
+{"source_term":"roadmap","target_term":"lộ trình","source_language":"en","target_language":"vi","domain":"business","audience":"","keep_verbatim":false}
+{"source_term":"milestone","target_term":"cột mốc","source_language":"en","target_language":"vi","domain":"business","audience":"","keep_verbatim":false}
+{"source_term":"deadline","target_term":"hạn chót","source_language":"en","target_language":"vi","domain":"business","audience":"","keep_verbatim":false}

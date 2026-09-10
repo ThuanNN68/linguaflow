@@ -1,0 +1,83 @@
+@import "tailwindcss";
+@source "../";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html:has(#linguaflow-app-shell),
+  body:has(#linguaflow-app-shell),
+  #linguaflow-app-shell {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: var(--font-plus-jakarta), "Plus Jakarta Sans", system-ui,
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+      Cantarell, sans-serif;
+  }
+}
+
+#linguaflow-app-shell ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+#linguaflow-app-shell ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#linguaflow-app-shell ::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgba(140, 149, 170, 0.25);
+}
+
+#linguaflow-app-shell ::-webkit-scrollbar-thumb:hover {
+  background: rgba(140, 149, 170, 0.45);
+}
+
+.dark #linguaflow-app-shell ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.dark #linguaflow-app-shell ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Full event/task editor: keep a neutral scrollbar flush with the modal edge. */
+#linguaflow-app-shell .calendar-event-form-scroll {
+  scrollbar-color: #9aa0a6 transparent;
+}
+
+#linguaflow-app-shell .calendar-event-form-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+#linguaflow-app-shell .calendar-event-form-scroll::-webkit-scrollbar-thumb {
+  background: #9aa0a6;
+}
+
+#linguaflow-app-shell .calendar-event-form-scroll::-webkit-scrollbar-thumb:hover {
+  background: #70757a;
+}
+
+/* Keep native number steppers readable in the reminder editor in every theme. */
+#linguaflow-app-shell .calendar-reminder-number {
+  color-scheme: light;
+  background-color: #ffffff;
+}
+
+#linguaflow-app-shell .calendar-reminder-number::-webkit-inner-spin-button {
+  opacity: 0;
+  background-color: #ffffff;
+  transition: opacity 120ms ease;
+}
+
+#linguaflow-app-shell .calendar-reminder-row:hover .calendar-reminder-number::-webkit-inner-spin-button,
+#linguaflow-app-shell .calendar-reminder-number:focus::-webkit-inner-spin-button {
+  opacity: 1;
+}
+
+#linguaflow-app-shell ::selection {
+  color: #ffffff;
+  background: rgb(37 99 235 / 72%);
+}

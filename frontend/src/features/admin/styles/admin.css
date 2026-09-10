@@ -1,0 +1,168 @@
+@import "tailwindcss";
+@source "./";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+}
+
+/* Admin theme is scoped so it cannot alter Chat/Auth pages. */
+#admin-app-shell[data-theme='dark'] {
+  color-scheme: dark;
+  background: #111318 !important;
+  color: #f5f6fa;
+}
+
+#admin-app-shell[data-theme='dark'] [class~='bg-white'],
+#admin-app-shell[data-theme='dark'] [class~='bg-[#F9FAFB]'] {
+  background-color: #1c1f27 !important;
+}
+
+#admin-app-shell[data-theme='dark'] [class~='bg-gray-50'],
+#admin-app-shell[data-theme='dark'] [class~='bg-gray-100'] {
+  background-color: #242832 !important;
+}
+
+#admin-app-shell[data-theme='dark'] [class~='text-gray-900'] {
+  color: #f5f6fa !important;
+}
+
+#admin-app-shell[data-theme='dark'] [class~='text-gray-700'],
+#admin-app-shell[data-theme='dark'] [class~='text-gray-600'] {
+  color: #d6dae3 !important;
+}
+
+#admin-app-shell[data-theme='dark'] [class~='text-gray-500'],
+#admin-app-shell[data-theme='dark'] [class~='text-gray-400'] {
+  color: #9da3b4 !important;
+}
+
+#admin-app-shell[data-theme='dark'] [class~='border-gray-100'],
+#admin-app-shell[data-theme='dark'] [class~='border-gray-200'],
+#admin-app-shell[data-theme='dark'] [class~='border-gray-300'],
+#admin-app-shell[data-theme='dark'] [class~='border-[#E8EAF0]'] {
+  border-color: #303541 !important;
+}
+
+#admin-app-shell[data-theme='dark'] input,
+#admin-app-shell[data-theme='dark'] select,
+#admin-app-shell[data-theme='dark'] textarea {
+  background: #242832;
+  border-color: #3a404d;
+  color: #f5f6fa;
+}
+
+/* Keep the Chat-style settings surfaces aligned with the explicit Admin
+   preference instead of the operating-system color preference. */
+#admin-app-shell[data-theme='light'] #admin-navigation-sidebar,
+#admin-app-shell[data-theme='light'] #admin-user-profile-popover,
+#admin-app-shell[data-theme='light'] #admin-settings-modal,
+#admin-app-shell[data-theme='light'] #admin-settings-modal main {
+  background: #ffffff !important;
+  color: #1e2230 !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-settings-modal > aside {
+  background: #f7f8fc !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-settings-modal h3,
+#admin-app-shell[data-theme='light'] #admin-settings-modal h4,
+#admin-app-shell[data-theme='light'] #admin-settings-modal h5,
+#admin-app-shell[data-theme='light'] #admin-settings-modal label,
+#admin-app-shell[data-theme='light'] #admin-user-profile-popover h4 {
+  color: #1e2230 !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-settings-modal p,
+#admin-app-shell[data-theme='light'] #admin-user-profile-popover p {
+  color: #74798c !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-settings-modal,
+#admin-app-shell[data-theme='light'] #admin-settings-modal * {
+  border-color: #e8eaf0;
+}
+
+#admin-app-shell[data-theme='light'] #admin-settings-modal select {
+  background: #f4f5f8 !important;
+  color: #1e2230 !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-settings-modal .rounded-2xl {
+  background: #f7f8fc !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-user-profile-popover > div:first-child {
+  background: #f7f8fc !important;
+  border-color: #e8eaf0 !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-user-profile-popover button {
+  background: transparent;
+  color: #1e2230 !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-user-profile-popover button:hover {
+  background: #f7f8fc;
+}
+
+#admin-app-shell[data-theme='light'] #admin-user-profile-popover > button:last-child {
+  color: #e11d48 !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-user-profile-popover > div:nth-last-child(2) {
+  border-color: #e8eaf0 !important;
+}
+
+/* Sidebar colors mirror the Chat navigation and must not inherit the shell's
+   foreground color through currentColor. */
+#admin-app-shell[data-theme='light'] #admin-brand-logo-btn {
+  background: transparent !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-navigation-sidebar [id^='nav-item-'] {
+  color: #74798c !important;
+  background: transparent !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-navigation-sidebar [id^='nav-item-']:hover,
+#admin-app-shell[data-theme='light'] #admin-sidebar-settings-btn:hover {
+  color: #2563eb !important;
+  background: #eff6ff !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-navigation-sidebar [id^='nav-item-'][aria-current='page'] {
+  color: #2563eb !important;
+  background: #eff6ff !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-sidebar-settings-btn {
+  color: #74798c !important;
+  background: transparent !important;
+}
+
+#admin-app-shell[data-theme='light'] #admin-profile-avatar-btn {
+  color: #2563eb !important;
+  background: #eff6ff !important;
+}
+
+#admin-app-shell[data-theme='dark'] #admin-brand-logo-btn {
+  background: transparent !important;
+}
+
+#admin-app-shell[data-theme='dark'] #admin-profile-avatar-btn {
+  color: #ffffff !important;
+  background: #2563eb !important;
+  box-shadow: 0 0 0 2px #60a5fa, 0 4px 12px rgba(37, 99, 235, 0.32) !important;
+}
+
+#admin-app-shell[data-theme='dark'] #admin-profile-avatar-btn:hover {
+  background: #3b82f6 !important;
+  box-shadow: 0 0 0 2px #93c5fd, 0 5px 16px rgba(37, 99, 235, 0.42) !important;
+}

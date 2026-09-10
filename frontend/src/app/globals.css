@@ -1,0 +1,296 @@
+/* LinguaFlow — hệ token toàn cục.
+   Vật neo: nhãn sản phẩm in trên giấy không tẩy trắng.
+   Ràng buộc cứng: không gradient, không bóng mờ, không animation vô hạn,
+   cỡ chữ trần 26px, bo góc trần 4px, chuyển động trần 160ms. */
+
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)),
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *,
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *::before,
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── Token — bảng light định nghĩa ĐỦ ở :root trần ─────────
+   Không token màu nào được định nghĩa lần đầu trong media query. */
+:root {
+  color-scheme: light dark;
+
+  /* Bề mặt (§3.1) — nền TỐI HƠN thẻ: bìa kraft lộ ra dưới giấy nhãn */
+  --surface-ground: #e8e4da;
+  --surface-label: #f5f2e9;
+  --surface-insert: #fdfcf9;
+  --surface-sunken: #ded9cb;
+
+  /* Mực (§4.1) */
+  --ink: #26241f;
+  --ink-hover: #3a372f;
+  --ink-secondary: #57534a;
+  --ink-muted: #6e6759;
+  --ink-disabled: #a09884;
+  --ink-inverse: #f5f2e9;
+
+  /* Kẻ hairline — công cụ phân vùng duy nhất (§3.3) */
+  --rule: #d9d2c2;
+  --rule-strong: #bfb5a0;
+
+  /* Sắc tố có vai (§4.1) */
+  --indigo: #2d4356;
+  --indigo-weak: rgba(45, 67, 86, 0.1);
+  --on-indigo: #fdfcf9;
+  --bengara: #a8503c;
+  --bengara-weak: rgba(168, 80, 60, 0.09);
+  --koke: #4a6741;
+
+  /* Vật liệu (§3.2, §3.3) */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)' opacity='0.055'/%3E%3C/svg%3E");
+  --shadow-seam: 0 1px 0 rgba(58, 50, 36, 0.05);
+
+  /* Khoảng cách — cơ sở 5px, tỉ lệ ~1,48 (§5.1) */
+  --s-1: 3px;
+  --s-2: 5px;
+  --s-3: 9px;
+  --s-4: 14px;
+  --s-5: 21px;
+  --s-6: 31px;
+  --s-7: 46px;
+  --s-8: 68px;
+
+  /* Cỡ chữ — trần 26px (§5.2) */
+  --fs-micro: 0.6875rem;
+  --fs-label: 0.75rem;
+  --fs-small: 0.8125rem;
+  --fs-body: 0.9375rem;
+  --fs-lead: 1.0625rem;
+  --fs-title: 1.3125rem;
+  --fs-display: 1.625rem;
+
+  /* Bo góc — trần 4px (§5.3) */
+  --r-1: 2px;
+  --r-2: 3px;
+  --r-3: 4px;
+
+  /* Chuyển động — trần 160ms (§6) */
+  --dur-press: 80ms;
+  --dur-focus: 100ms;
+  --dur-hover: 120ms;
+  --dur-fade: 140ms;
+
+  /* Font (§9) — biến --font-be-vietnam / --font-plex-mono do next/font đặt */
+  --font-body: var(--font-be-vietnam), "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Mono", monospace;
+  --font-cjk: "Hiragino Sans", "Yu Gothic", "Meiryo", "Microsoft YaHei",
+    "Malgun Gothic", "Noto Sans CJK", sans-serif;
+  --font-thai: "Leelawadee UI", "Noto Sans Thai", "Thonburi", sans-serif;
+}
+
+/* Dark theme = giấy dưới đèn bàn, không phải giao diện tối chung.
+   Xám ấm, không một sắc xanh-tím nào. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-ground: #191714;
+    --surface-label: #221f1a;
+    --surface-insert: #2a2620;
+    --surface-sunken: #131110;
+
+    --ink: #e8e3d7;
+    --ink-hover: #d6d0c2;
+    --ink-secondary: #b3ab99;
+    --ink-muted: #9c9384;
+    --ink-disabled: #5c564c;
+    --ink-inverse: #191714;
+
+    --rule: #39342b;
+    --rule-strong: #4e4739;
+
+    --indigo: #8fb3c9;
+    --indigo-weak: rgba(143, 179, 201, 0.12);
+    --on-indigo: #221f1a;
+    --bengara: #d08a72;
+    --bengara-weak: rgba(208, 138, 114, 0.12);
+    --koke: #93b085;
+
+    --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)' opacity='0.03'/%3E%3C/svg%3E");
+    --shadow-seam: 0 1px 0 rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* Lặp lại y hệt để toggle thắng cả hai chiều */
+:root[data-theme="dark"] {
+  --surface-ground: #191714;
+  --surface-label: #221f1a;
+  --surface-insert: #2a2620;
+  --surface-sunken: #131110;
+
+  --ink: #e8e3d7;
+  --ink-hover: #d6d0c2;
+  --ink-secondary: #b3ab99;
+  --ink-muted: #9c9384;
+  --ink-disabled: #5c564c;
+  --ink-inverse: #191714;
+
+  --rule: #39342b;
+  --rule-strong: #4e4739;
+
+  --indigo: #8fb3c9;
+  --indigo-weak: rgba(143, 179, 201, 0.12);
+  --on-indigo: #221f1a;
+  --bengara: #d08a72;
+  --bengara-weak: rgba(208, 138, 114, 0.12);
+  --koke: #93b085;
+
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)' opacity='0.03'/%3E%3C/svg%3E");
+  --shadow-seam: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* ─── Nền ───────────────────────────────────────────────── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  color: var(--ink);
+  background-color: var(--surface-ground);
+  background-image: var(--grain);
+  min-height: 100svh;
+}
+
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) a {
+  color: var(--indigo);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule-strong);
+  transition: border-color var(--dur-hover) linear;
+}
+
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) a:hover {
+  border-bottom-color: var(--indigo);
+}
+
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) input,
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) textarea,
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) select {
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+}
+
+/* Focus ring bắt buộc ở mọi phần tử tương tác (§11).
+   :focus-visible — không phải :focus — để chuột không kéo ring theo. */
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) :focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
+/* ─── Chữ đa ngữ (§9) ───────────────────────────────────── */
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) [lang="ja"],
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) [lang="zh"],
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) [lang="ko"] {
+  font-family: var(--font-cjk);
+  line-height: 1.75;
+}
+
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) [lang="ko"] {
+  word-break: keep-all;
+}
+
+body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) [lang="th"] {
+  font-family: var(--font-thai);
+  line-height: 1.75;
+}
+
+/* ─── Thanh cuộn ────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-sunken);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--rule-strong);
+}
+
+/* ─── Tiện dụng ─────────────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─── Giảm chuyển động (§6) ─────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *,
+  body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *::before,
+  body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.error-boundary {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: #f8fafc;
+  color: #172033;
+}
+
+.error-boundary__card {
+  width: min(100%, 520px);
+  padding: 32px;
+  border: 1px solid #dbe3ef;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 20px 50px rgb(15 23 42 / 10%);
+}
+
+.error-boundary__eyebrow {
+  margin-bottom: 8px;
+  color: #b42318;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.error-boundary h1 {
+  margin-bottom: 12px;
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+}
+
+.error-boundary button {
+  margin-top: 20px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #4f46e5;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
