@@ -20,7 +20,7 @@ langchain-google-genai>=2.0.0
 # Gemini 3.5 Transcribe adapter. It is also pulled transitively by recent
 # langchain-google-genai releases, but older compatible releases do not expose
 # the Interactions API contract this service requires.
-google-genai==2.18.1
+google-genai==2.22.0
 # Direct SDK for the independent OpenAI STT fallback.
 openai>=1.68.0
 # Platform wheels bundle the FFmpeg executable (~25-31 MiB) used only for
