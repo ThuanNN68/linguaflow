@@ -70,7 +70,7 @@ pgvector>=0.3.0
 # khi provider hosted het quota (EMBEDDING_FALLBACK_PROVIDER). Chung keo theo
 # torch (~500MB) vao image — do la cai gia da chon de mot han muc can khong lam
 # dut dich vu; bo dong nay neu trien khai chap nhan mat khop ngu nghia luc do.
-langchain-huggingface>=0.1.0
+langchain-huggingface>=1.2.2
 sentence-transformers>=3.0.0
 
 # Vector Store (uncomment as needed)
