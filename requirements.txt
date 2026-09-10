@@ -90,7 +90,7 @@ redis>=5.2.0,<6.0.0
 # S3-compatible attachment storage (AWS S3, R2, MinIO, and peers).
 boto3>=1.35.0,<2.0.0
 # Standards-based PWA Web Push; imported lazily only when VAPID is configured.
-pywebpush>=2.0.3,<3.0.0
+pywebpush>=2.5.0,<3.0.0
 
 # Authentication
 PyJWT[crypto]>=2.10.0,<3.0.0
