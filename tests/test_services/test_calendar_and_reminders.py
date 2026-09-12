@@ -178,6 +178,7 @@ async def test_failed_durable_reminder_delivery_is_left_retryable(
 
     await test_db.rollback()
     stored = await test_db.get(Reminder, reminder_id)
+    await test_db.refresh(stored)
     assert claimed == 1
     assert stored.delivered_at is None
     assert stored.claimed_at is None
