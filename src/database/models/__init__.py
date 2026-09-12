@@ -4,7 +4,14 @@ Import models from this package for backwards compatibility and to ensure Alembi
 loads every table before reading ``Base.metadata``.
 """
 
-from .assistant import ActionProposal, AgentConsent, AssistantAttempt, AssistantChunk, AssistantUserMemory
+from .assistant import (
+    ActionProposal,
+    AgentConsent,
+    AssistantAttempt,
+    AssistantChunk,
+    AssistantJob,
+    AssistantUserMemory,
+)
 from .auth import AuditLog, PasswordResetToken, PendingRegistration, RefreshSession, User
 from .base import Base
 from .calendar import CalendarEvent, Reminder
@@ -26,6 +33,7 @@ from .constants import (
     AGENT_CONSENT_POLICY_VERSION,
     AGENT_CONSENT_SCOPES,
     ASSISTANT_CHUNK_STRATEGIES,
+    ASSISTANT_JOB_STATUSES,
     ASSISTANT_MEMORY_KINDS,
     ASSISTANT_OUTCOMES,
     ATTEMPT_OUTCOMES,
@@ -82,6 +90,7 @@ __all__ = [
     "ACTION_PROPOSAL_STATUSES",
     "ACTION_PROPOSAL_SOURCE_MODES",
     "ASSISTANT_CHUNK_STRATEGIES",
+    "ASSISTANT_JOB_STATUSES",
     "ASSISTANT_MEMORY_KINDS",
     "ASSISTANT_OUTCOMES",
     "User",
@@ -112,6 +121,7 @@ __all__ = [
     "AgentConsent",
     "ActionProposal",
     "AssistantChunk",
+    "AssistantJob",
     "AssistantUserMemory",
     "AssistantAttempt",
     "CalendarEvent",

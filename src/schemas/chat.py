@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     BaseModel,
@@ -567,6 +568,9 @@ class SendMessageEvent(BaseModel):
     attachment_id: str | None = Field(default=None, max_length=255)
     reply_to_message_id: str | None = Field(default=None, max_length=36)
     forwarded_from_message_id: str | None = Field(default=None, max_length=36)
+    # The browser's IANA zone is explicit user input. It lets a proposal turn
+    # “tomorrow at 10” into a reviewable instant without guessing a locale.
+    client_timezone: str | None = Field(default=None, max_length=64)
     mentions: list[MentionSummary] = []
 
     @field_validator("client_message_id", "conversation_id")
@@ -585,6 +589,17 @@ class SendMessageEvent(BaseModel):
             raise ValueError("text must not be blank")
         return value
 
+    @field_validator("client_timezone")
+    @classmethod
+    def client_timezone_must_be_iana(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("client_timezone must be a valid IANA timezone") from exc
+        return value
+
 
 class SendVoiceMessageEvent(BaseModel):
     """Authenticated request to claim stored audio as a voice message."""
@@ -596,12 +611,24 @@ class SendVoiceMessageEvent(BaseModel):
     conversation_id: str = Field(min_length=1, max_length=36)
     attachment_id: str = Field(min_length=1, max_length=255)
     reply_to_message_id: str | None = Field(default=None, max_length=36)
+    client_timezone: str | None = Field(default=None, max_length=64)
 
     @field_validator("client_message_id", "conversation_id", "attachment_id", "reply_to_message_id")
     @classmethod
     def identifiers_must_not_be_blank(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
             raise ValueError("identifier must not be blank")
+        return value
+
+    @field_validator("client_timezone")
+    @classmethod
+    def voice_timezone_must_be_iana(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("client_timezone must be a valid IANA timezone") from exc
         return value
 
 
@@ -644,6 +671,16 @@ class MessageReceivedEvent(BaseModel):
 
     type: Literal["message_received"] = "message_received"
     message: RealtimeMessage
+
+
+class AssistantConsentRequiredEvent(BaseModel):
+    """Tell the requesting client why an assistant turn produced no reply."""
+
+    type: Literal["assistant_consent_required"] = "assistant_consent_required"
+    client_message_id: str
+    conversation_id: str
+    scope: Literal["read_conversations"] = "read_conversations"
+    message: str = "Allow the assistant to read conversations before asking it to respond."
 
 
 class MentionNotificationEvent(BaseModel):

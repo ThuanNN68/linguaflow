@@ -28,6 +28,7 @@ async def extract_action_candidates(
     message_id: str,
     settings: Settings | None = None,
     provider: str | None = None,
+    nearby_context: str = "",
 ) -> list[ActionCandidateDTO]:
     """Extract candidate action items from message text using LLM."""
     clean_text = message_text.strip()
@@ -55,6 +56,7 @@ async def extract_action_candidates(
         sender_name=sender_name,
         members_context=members_context,
         reference_timestamp=ref_time_str,
+        nearby_context=nearby_context,
     )
 
     messages = [

@@ -19,9 +19,23 @@ export function proposalsForAssistantReply(
   return proposals.filter((proposal) => proposal.source_message_id === sourceMessageId);
 }
 
+/**
+ * A chat is a running conversation, not a backlog of approval controls.
+ * Keep the inline calendar card on the newest Assistant turn only; older
+ * proposals remain safely available in the Task inbox.
+ */
+export function latestAssistantReplyId(messages: readonly Message[]): string | undefined {
+  return [...messages]
+    .reverse()
+    .find((message) => message.isAssistant && message.replyTo?.id)?.id;
+}
+
 /** Legacy replies can claim a proposal exists even when extraction failed.
- * This only offers recovery; it must never invent appointment data. */
+ *
+ * An in-progress reply ("đang kiểm tra") is deliberately not a claim: the
+ * background extractor has not produced durable data yet, so showing a review
+ * card at that point promises a calendar proposal that does not exist. */
 export function hasUnresolvedAppointmentClaim(message: Message): boolean {
   return Boolean(message.isAssistant && message.replyTo?.id
-    && /(?:đã chuẩn bị|đang kiểm tra)[\s\S]*đề xuất lịch/iu.test(message.content));
+    && /đã chuẩn bị[\s\S]*đề xuất lịch/iu.test(message.content));
 }

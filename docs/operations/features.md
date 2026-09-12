@@ -32,8 +32,9 @@ events remain proposals until approved.
 `calendar_read` permits the assistant to read the internal calendar for planning;
 `calendar_write` permits a confirmed assistant action to change it. A reminder is
 stored durably in PostgreSQL. The scheduler scans due reminders, claims each row
-atomically, records delivery before notifying clients, and writes a durable notice
-when appropriate. This prevents repeated delivery after a restart.
+atomically, writes a durable assistant notice, and only then records delivery.
+Failed delivery releases the claim and retries with bounded exponential backoff.
+This prevents false “delivered” state and repeated delivery after a restart.
 
 Operations checklist:
 
@@ -43,6 +44,8 @@ Operations checklist:
   and a backend restart.
 - Treat WebSocket toast delivery as best effort; the durable record is the source
   of truth.
+- A sleeping free-tier backend can deliver overdue reminders after it wakes, but
+  cannot guarantee minute-accurate delivery while no worker is running.
 
 ## Languages and translation
 
@@ -72,6 +75,12 @@ Calendar proposals must be reviewed before writes. A proposal may request missin
 event fields during review; this is proposal completion, not a separate message
 clarification feature. Rejecting a proposal must not create or modify an event.
 
+For calendar requests, the assistant waits briefly for an immediately following
+time or note, then examines bounded nearby context. Later corrections update the
+matching pending proposal using the newest explicit value. A missing date or
+start time disables approval until the reviewer supplies it. The proposal review
+surface identifies the message that provided extracted time and details.
+
 Test each consent separately, revoke it between requests, and verify that a user
 cannot access another user's conversation, calendar, consent, or attachment.
 
@@ -80,8 +89,10 @@ cannot access another user's conversation, calendar, consent, or attachment.
 Attachment downloads require authentication and conversation membership. Voice
 audio is not listed as a shared document in the conversation details drawer.
 Transcripts participate in search and assistant context only after successful
-processing. A failed transcription can be retried through the supported message
-workflow.
+processing. A successful voice transcript may therefore create or update an
+assistant proposal exactly as typed text can. The message's browser timezone is
+used when resolving relative dates. A failed transcription can be retried through
+the supported message workflow.
 
 Saved-message state is personal and is not broadcast. Reactions are scoped to
 conversation members. Forwarding creates a new message in the destination and

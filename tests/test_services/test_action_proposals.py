@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 import pytest_asyncio
@@ -13,6 +15,7 @@ from src.core.security import get_password_hash
 from src.database.models import ActionProposal, Conversation, ConversationMember, Message, User
 from src.schemas.intelligence import ActionCandidateDTO
 from src.services.intelligence.action_proposals import (
+    ActionProposalAmbiguousTargetError,
     ActionProposalNotFoundError,
     ActionProposalOwnershipError,
     ActionProposalService,
@@ -48,10 +51,12 @@ async def proposal_setup(test_db: AsyncSession):
     test_db.add(conv)
     await test_db.flush()
 
-    test_db.add_all([
-        ConversationMember(conversation_id=conv.id, user_id=owner.id),
-        ConversationMember(conversation_id=conv.id, user_id=other.id),
-    ])
+    test_db.add_all(
+        [
+            ConversationMember(conversation_id=conv.id, user_id=owner.id),
+            ConversationMember(conversation_id=conv.id, user_id=other.id),
+        ]
+    )
 
     msg = Message(
         conversation_id=conv.id,
@@ -84,6 +89,113 @@ def test_compute_proposal_idempotency_key_deterministic():
 
 
 @pytest.mark.asyncio
+async def test_calendar_amendment_merges_into_latest_active_proposal_without_database():
+    """The correction rule remains covered when PostgreSQL is unavailable locally."""
+    original_source = SimpleNamespace(
+        id="message-1",
+        conversation_id="conversation-1",
+        created_at=datetime(2026, 8, 20, 10, 0, tzinfo=UTC),
+    )
+    amendment_source = SimpleNamespace(
+        id="message-2",
+        conversation_id="conversation-1",
+        created_at=datetime(2026, 8, 20, 10, 1, tzinfo=UTC),
+    )
+    existing = SimpleNamespace(
+        id="proposal-1",
+        source_message_id=original_source.id,
+        time_source_message_id=original_source.id,
+        details_source_message_id=original_source.id,
+        conversation_id="conversation-1",
+        owner_user_id="owner-1",
+        action_type="appointment",
+        status="pending_confirmation",
+        title="Project meeting",
+        details="Remember the camera",
+        location=None,
+        raw_time_expression=None,
+        scheduled_start_at=datetime(2026, 8, 22, 9, 0, tzinfo=UTC),
+        scheduled_end_at=None,
+        scheduled_time=datetime(2026, 8, 22, 9, 0, tzinfo=UTC),
+        due_at=None,
+        resolved_timezone="Asia/Ho_Chi_Minh",
+        missing_fields="[]",
+        updated_at=datetime(2026, 8, 20, 10, 0, tzinfo=UTC),
+    )
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.scalar_calls = 0
+            self.committed = False
+
+        async def get(self, _model, message_id):
+            if message_id == amendment_source.id:
+                return amendment_source
+            if message_id == original_source.id:
+                return original_source
+            return None
+
+        async def scalar(self, _statement):
+            self.scalar_calls += 1
+            return None
+
+        async def execute(self, _statement, _parameters=None):
+            return None
+
+        async def scalars(self, _statement):
+            return SimpleNamespace(all=lambda: [existing])
+
+        async def commit(self):
+            self.committed = True
+
+    db = FakeSession()
+    result = await ActionProposalService(db).create_proposals_from_candidates(
+        conversation_id="conversation-1",
+        source_message_id=amendment_source.id,
+        candidates=[
+            ActionCandidateDTO(
+                owner_user_id="owner-1",
+                action_type="appointment",
+                title="Meeting",
+                scheduled_time=datetime(2026, 8, 22, 22, 0, tzinfo=UTC),
+            )
+        ],
+        owner_user_id="owner-1",
+        source_mode="on_demand",
+        field_source_message_ids={"time": amendment_source.id},
+        update_latest_appointment=True,
+    )
+
+    assert result == [existing]
+    assert existing.title == "Project meeting"
+    assert existing.details == "Remember the camera"
+    assert existing.scheduled_start_at == datetime(2026, 8, 22, 22, 0, tzinfo=UTC)
+    assert existing.time_source_message_id == amendment_source.id
+    assert existing.details_source_message_id == original_source.id
+    assert db.committed
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_calendar_amendment_requires_a_named_target():
+    proposals = [
+        SimpleNamespace(title="Design review"),
+        SimpleNamespace(title="Sprint planning"),
+    ]
+
+    class FakeSession:
+        async def scalars(self, _statement):
+            return SimpleNamespace(all=lambda: proposals)
+
+    service = ActionProposalService(FakeSession())
+    with pytest.raises(ActionProposalAmbiguousTargetError):
+        await service._appointment_amendment_target(
+            conversation_id="conversation-1",
+            owner_user_id="owner-1",
+            candidate_title="Meeting",
+        )
+
+
+@pytest.mark.asyncio
 async def test_create_proposals_from_candidates_and_idempotency(test_db: AsyncSession, proposal_setup):
     service = ActionProposalService(test_db)
     owner = proposal_setup["owner"]
@@ -105,7 +217,9 @@ async def test_create_proposals_from_candidates_and_idempotency(test_db: AsyncSe
     proposals1 = await service.create_proposals_from_candidates(
         conversation_id=conv.id,
         source_message_id=msg.id,
-        candidates=candidates, owner_user_id=owner.id, source_mode="on_demand",
+        candidates=candidates,
+        owner_user_id=owner.id,
+        source_mode="on_demand",
     )
     assert len(proposals1) == 1
     p1 = proposals1[0]
@@ -117,10 +231,77 @@ async def test_create_proposals_from_candidates_and_idempotency(test_db: AsyncSe
     proposals2 = await service.create_proposals_from_candidates(
         conversation_id=conv.id,
         source_message_id=msg.id,
-        candidates=candidates, owner_user_id=owner.id, source_mode="on_demand",
+        candidates=candidates,
+        owner_user_id=owner.id,
+        source_mode="on_demand",
     )
     assert len(proposals2) == 1
     assert proposals2[0].id == p1.id
+
+
+@pytest.mark.asyncio
+async def test_calendar_amendment_updates_latest_pending_proposal_and_keeps_context(
+    test_db: AsyncSession, proposal_setup
+):
+    """A later correction wins without losing fields supplied by the first request."""
+    service = ActionProposalService(test_db)
+    owner = proposal_setup["owner"]
+    conv = proposal_setup["conv"]
+    first_message = proposal_setup["msg"]
+    first = (
+        await service.create_proposals_from_candidates(
+            conversation_id=conv.id,
+            source_message_id=first_message.id,
+            candidates=[
+                ActionCandidateDTO(
+                    owner_user_id=owner.id,
+                    action_type="appointment",
+                    title="Project meeting",
+                    details="Remember the camera",
+                    scheduled_time=datetime(2026, 8, 22, 9, 0, tzinfo=UTC),
+                )
+            ],
+            owner_user_id=owner.id,
+            source_mode="on_demand",
+            field_source_message_ids={"time": first_message.id, "details": first_message.id},
+        )
+    )[0]
+    amendment_message = Message(
+        conversation_id=conv.id,
+        sender_id=owner.id,
+        client_message_id="c-msg-amendment",
+        original_text="Move it to 10 PM tomorrow",
+        source_language="en",
+    )
+    test_db.add(amendment_message)
+    await test_db.commit()
+
+    amended = (
+        await service.create_proposals_from_candidates(
+            conversation_id=conv.id,
+            source_message_id=amendment_message.id,
+            candidates=[
+                ActionCandidateDTO(
+                    owner_user_id=owner.id,
+                    action_type="appointment",
+                    title="Meeting",
+                    scheduled_time=datetime(2026, 8, 22, 22, 0, tzinfo=UTC),
+                )
+            ],
+            owner_user_id=owner.id,
+            source_mode="on_demand",
+            field_source_message_ids={"time": amendment_message.id},
+            update_latest_appointment=True,
+        )
+    )[0]
+
+    assert amended.id == first.id
+    assert amended.title == "Project meeting"
+    assert amended.details == "Remember the camera"
+    assert amended.scheduled_start_at == datetime(2026, 8, 22, 22, 0, tzinfo=UTC)
+    assert amended.time_source_message_id == amendment_message.id
+    assert amended.details_source_message_id == first_message.id
+    assert len((await test_db.scalars(select(ActionProposal))).all()) == 1
 
 
 @pytest.mark.asyncio
@@ -160,7 +341,9 @@ async def test_confirm_proposal_lifecycle_and_invariants(test_db: AsyncSession, 
                 scheduled_time=datetime(2026, 8, 22, 10, 0, 0, tzinfo=UTC),
                 scheduled_end_time=datetime(2026, 8, 22, 11, 30, 0, tzinfo=UTC),
             )
-        ], owner_user_id=owner.id, source_mode="on_demand",
+        ],
+        owner_user_id=owner.id,
+        source_mode="on_demand",
     )
     p = proposals[0]
     assert p.scheduled_end_at == datetime(2026, 8, 22, 11, 30, 0, tzinfo=UTC)
@@ -201,7 +384,9 @@ async def test_reject_proposal_lifecycle_and_invariants(test_db: AsyncSession, p
                 action_type="task",
                 title="Rejectable Task",
             )
-        ], owner_user_id=owner.id, source_mode="on_demand",
+        ],
+        owner_user_id=owner.id,
+        source_mode="on_demand",
     )
     p = proposals[0]
 
@@ -240,7 +425,9 @@ async def test_mark_proposals_stale_for_message(test_db: AsyncSession, proposal_
                 action_type="appointment",
                 title="Meeting Already Confirmed",
             ),
-        ], owner_user_id=owner.id, source_mode="on_demand",
+        ],
+        owner_user_id=owner.id,
+        source_mode="on_demand",
     )
     p_pending = proposals[0]
     p_confirmed = proposals[1]
@@ -258,6 +445,43 @@ async def test_mark_proposals_stale_for_message(test_db: AsyncSession, proposal_
 
     reloaded_confirmed = await service.get_proposal(p_confirmed.id)
     assert reloaded_confirmed.status == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_editing_a_field_source_marks_the_pending_proposal_stale(test_db: AsyncSession, proposal_setup):
+    service = ActionProposalService(test_db)
+    owner = proposal_setup["owner"]
+    conv = proposal_setup["conv"]
+    source = proposal_setup["msg"]
+    time_source = Message(
+        conversation_id=conv.id,
+        sender_id=owner.id,
+        client_message_id="proposal-time-source",
+        original_text="Tomorrow at 10 PM",
+        source_language="en",
+    )
+    test_db.add(time_source)
+    await test_db.commit()
+    proposal = (
+        await service.create_proposals_from_candidates(
+            conversation_id=conv.id,
+            source_message_id=source.id,
+            candidates=[
+                ActionCandidateDTO(
+                    owner_user_id=owner.id,
+                    action_type="appointment",
+                    title="Project meeting",
+                    scheduled_time=datetime(2026, 8, 22, 22, 0, tzinfo=UTC),
+                )
+            ],
+            owner_user_id=owner.id,
+            source_mode="on_demand",
+            field_source_message_ids={"time": time_source.id},
+        )
+    )[0]
+
+    assert await service.mark_proposals_stale_for_message(time_source.id) == 1
+    assert (await service.get_proposal(proposal.id)).status == "stale"
 
 
 def test_temporal_normalizer_requires_trusted_timezone_for_relative_time():
@@ -300,6 +524,29 @@ def test_temporal_normalizer_accepts_local_vietnamese_clarification_with_timezon
     assert resolved.scheduled_start_at == datetime(2026, 8, 29, 2, 0, tzinfo=UTC)
     assert resolved.resolved_timezone == "Asia/Ho_Chi_Minh"
     assert resolved.missing_fields == ()
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected_hour", "day_offset"),
+    [
+        ("10 giờ tối mai", 22, 1),
+        ("tối mai lúc 10 giờ", 22, 1),
+        ("3 giờ chiều ngày mai", 15, 1),
+        ("9 giờ sáng ngày kia", 9, 2),
+        ("hôm nay lúc 8 giờ tối", 20, 0),
+    ],
+)
+def test_temporal_normalizer_understands_vietnamese_day_parts(expression: str, expected_hour: int, day_offset: int):
+    reference = datetime(2026, 9, 12, 8, 0, tzinfo=UTC)
+    resolved = normalize_action_time(
+        raw_time_expression=expression,
+        reference_timestamp=reference,
+        trusted_timezone="Asia/Ho_Chi_Minh",
+    )
+
+    local = resolved.scheduled_start_at.astimezone(ZoneInfo("Asia/Ho_Chi_Minh"))
+    assert local.date() == (reference.astimezone(ZoneInfo("Asia/Ho_Chi_Minh")) + timedelta(days=day_offset)).date()
+    assert local.hour == expected_hour
 
 
 @pytest.mark.asyncio
@@ -362,9 +609,7 @@ async def test_duplicate_candidate_does_not_rollback_earlier_candidate(test_db: 
         source_mode="on_demand",
     )
     assert {proposal.title for proposal in result} == {"Earlier unique", "Existing duplicate"}
-    assert await test_db.scalar(
-        select(ActionProposal.id).where(ActionProposal.title == "Earlier unique")
-    ) is not None
+    assert await test_db.scalar(select(ActionProposal.id).where(ActionProposal.title == "Earlier unique")) is not None
 
 
 @pytest.mark.asyncio
@@ -468,9 +713,7 @@ async def test_raw_relative_time_is_part_of_idempotency_identity(test_db: AsyncS
     assert proposals[0].idempotency_key != proposals[1].idempotency_key
     assert compute_proposal_idempotency_key(
         owner.id, msg.id, "task", "Send report", None, "on_demand", "mai 9h"
-    ) == compute_proposal_idempotency_key(
-        owner.id, msg.id, "task", " send report ", None, "on_demand", "MAI   9H"
-    )
+    ) == compute_proposal_idempotency_key(owner.id, msg.id, "task", " send report ", None, "on_demand", "MAI   9H")
 
 
 @pytest.mark.asyncio
@@ -496,9 +739,7 @@ async def test_needs_clarification_temporal_correction_confirms_atomically(test_
     test_db.add(proposal)
     await test_db.commit()
 
-    confirmed = await service.confirm_proposal(
-        proposal.id, owner.id, {"timezone": "Asia/Ho_Chi_Minh"}
-    )
+    confirmed = await service.confirm_proposal(proposal.id, owner.id, {"timezone": "Asia/Ho_Chi_Minh"})
     assert confirmed.status == "confirmed"
     assert confirmed.missing_fields == "[]"
     assert confirmed.scheduled_start_at == datetime(2026, 8, 22, 2, 0, tzinfo=UTC)
@@ -556,9 +797,7 @@ async def test_explicit_owner_datetime_resolves_only_time_missing_field(test_db:
 
 
 @pytest.mark.asyncio
-async def test_clarification_parser_failure_leaves_row_unchanged(
-    test_db: AsyncSession, proposal_setup, monkeypatch
-):
+async def test_clarification_parser_failure_leaves_row_unchanged(test_db: AsyncSession, proposal_setup, monkeypatch):
     service = ActionProposalService(test_db)
     owner = proposal_setup["owner"]
     conv = proposal_setup["conv"]

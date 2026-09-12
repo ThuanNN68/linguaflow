@@ -70,15 +70,33 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    Request[Authorized user request] --> Consent{Consent granted?}
+    Request[Authorized text or voice transcript] --> Job[(Durable assistant job)]
+    Job --> Settle[Brief context settling window]
+    Settle --> Consent{Consent granted?}
     Consent -- no --> Reject[Return consent requirement]
     Consent -- yes --> Retrieve[Retrieve permitted context]
     Retrieve --> Model[Guarded assistant workflow]
     Model --> Validate[Validate structured output]
-    Validate --> Proposal[(Persist proposal)]
+    Validate --> Merge{Matching pending proposal?}
+    Merge -- yes --> Update[(Update newest proposal and provenance)]
+    Merge -- no --> Proposal[(Persist proposal)]
     Proposal --> Review{User review}
+    Update --> Review
+    Review -- missing time --> Complete[Complete date and start time]
+    Complete --> Review
     Review -- approve --> Apply[Apply internal action]
     Review -- reject --> Dismiss[Record dismissal]
+```
+
+## Reminder delivery flow
+
+```mermaid
+flowchart LR
+    Due[Due reminder] --> Claim[Atomically claim reminder]
+    Claim --> Notice[(Persist assistant reminder message)]
+    Notice --> Delivered[Mark delivered]
+    Notice -->|write failure| Retry[Release claim and schedule backoff retry]
+    Retry --> Claim
 ```
 
 ## Realtime scaling

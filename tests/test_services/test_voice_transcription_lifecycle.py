@@ -9,6 +9,7 @@ from sqlalchemy import func, select, update
 
 from src.database.models import Attachment, Message
 from src.services.messaging.chat import ChatService
+from src.services.voice import voice_transcription
 from src.services.voice.transcription import (
     TranscriptionProviderError,
     TranscriptionResult,
@@ -177,6 +178,60 @@ async def test_success_uses_fresh_sessions_persists_full_transcript_then_publish
             )
             == 1
         )
+
+
+@pytest.mark.asyncio
+async def test_completed_voice_in_assistant_thread_is_forwarded_to_assistant(
+    monkeypatch,
+    test_db,
+    test_user,
+):
+    """The STT transcript becomes the Assistant's request only in its private thread."""
+    conversation = (await ChatService(test_db).get_or_create_assistant_conversation(user_id=test_user.id)).conversation
+    attachment = Attachment(
+        id=f"assistant-voice-{conversation.id}.webm",
+        conversation_id=conversation.id,
+        uploader_id=test_user.id,
+        filename="recording.webm",
+        content_type="audio/webm; codecs=opus",
+        size=321,
+    )
+    test_db.add(attachment)
+    await test_db.commit()
+    message = (
+        await ChatService(test_db).send_voice_message(
+            sender_id=test_user.id,
+            conversation_id=conversation.id,
+            client_message_id=f"assistant-voice-{conversation.id}",
+            attachment_id=attachment.id,
+        )
+    ).message
+
+    scheduled: list[dict] = []
+    monkeypatch.setattr(
+        voice_transcription,
+        "schedule_assistant_voice_transcript",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+    publisher = DurablePublisher(test_support.test_async_session_maker)
+    await transcribe_voice_message(
+        message_id=message.id,
+        conversation_id=conversation.id,
+        publisher=publisher,
+        session_factory=test_support.test_async_session_maker,
+        transcription_service_factory=FakeTranscriptionService,
+        postprocessing_scheduler=RecordingPostprocessor(publisher),
+    )
+
+    assert scheduled == [
+        {
+            "message_id": message.id,
+            "conversation_id": conversation.id,
+            "requester_id": test_user.id,
+            "publisher": publisher,
+            "trusted_timezone": None,
+        }
+    ]
 
 
 @pytest.mark.asyncio

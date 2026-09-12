@@ -4,6 +4,18 @@ import type { AuthUser } from "@/shared/types/auth";
 import type { Conversation, Message, MessageAttachment, User } from "../types";
 import { interactionText } from "../i18n";
 
+export class ChatApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly scope?: string,
+  ) {
+    super(message);
+    this.name = "ChatApiError";
+  }
+}
+
 interface ApiMention {
   type: "user" | "assistant";
   user_id?: string | null;
@@ -448,8 +460,11 @@ async function request<T>(path: string, accessToken: string, init: RequestInit =
   if (response.status === 204) return undefined as T;
   const body = await parseJson<T & ApiErrorBody>(response);
   if (!response.ok) {
-    throw new Error(
+    throw new ChatApiError(
       getApiErrorMessage(body, `Yêu cầu không thành công (HTTP ${response.status})`),
+      response.status,
+      body?.code,
+      body?.scope,
     );
   }
   return body as T;
@@ -700,6 +715,8 @@ export interface ApiActionProposal {
   id: string;
   conversation_id: string;
   source_message_id: string;
+  time_source_message_id?: string | null;
+  details_source_message_id?: string | null;
   owner_user_id: string;
   action_type: "task" | "appointment";
   status: "needs_clarification" | "pending_confirmation" | "confirmed" | "rejected" | "stale";
@@ -716,6 +733,8 @@ export interface ApiActionProposal {
   source_sender_name?: string | null;
   source_conversation_name?: string | null;
   source_conversation_type?: "direct" | "group" | null;
+  time_source_at?: string | null;
+  details_source_at?: string | null;
   created_at: string;
   updated_at: string;
   confirmed_at: string | null;

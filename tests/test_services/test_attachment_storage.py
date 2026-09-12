@@ -22,7 +22,7 @@ def _settings(tmp_path, **overrides) -> Settings:
         "jwt_secret": VALID_SECRET,
         "upload_dir": str(tmp_path),
         "supabase_url": "",
-        "supabase_service_role_key": "",
+        "supabase_secret_key": "",
     }
     values.update(overrides)
     return Settings(**values)
@@ -68,7 +68,7 @@ async def test_local_storage_reports_a_missing_object(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_supabase_storage_round_trip_uses_existing_object_key_and_headers(tmp_path):
+async def test_supabase_storage_round_trip_uses_existing_object_key_and_secret_key_headers(tmp_path):
     requests: list[httpx.Request] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -81,7 +81,7 @@ async def test_supabase_storage_round_trip_uses_existing_object_key_and_headers(
     settings = _settings(
         tmp_path,
         supabase_url="https://storage.example.test",
-        supabase_service_role_key="service-key",
+        supabase_secret_key="sb_secret_test",
         supabase_storage_bucket="attachments",
     )
     storage = AttachmentStorage(settings, transport=httpx.MockTransport(handler))
@@ -99,10 +99,11 @@ async def test_supabase_storage_round_trip_uses_existing_object_key_and_headers(
     assert [request.method for request in requests] == ["POST", "GET"]
     assert all(request.url.path == "/storage/v1/object/attachments/conversation-1/attachment-1" for request in requests)
     assert requests[0].headers["content-type"] == "audio/webm"
-    assert requests[0].headers["authorization"] == "Bearer service-key"
-    assert requests[1].headers["apikey"] == "service-key"
+    assert requests[0].headers["apikey"] == "sb_secret_test"
+    assert "authorization" not in requests[0].headers
 
 
+@pytest.mark.asyncio
 @pytest.mark.asyncio
 async def test_supabase_missing_and_provider_failures_are_controlled(tmp_path):
     responses = iter(
@@ -118,7 +119,7 @@ async def test_supabase_missing_and_provider_failures_are_controlled(tmp_path):
     settings = _settings(
         tmp_path,
         supabase_url="https://storage.example.test",
-        supabase_service_role_key="service-key",
+        supabase_secret_key="sb_secret_test",
     )
     storage = AttachmentStorage(settings, transport=httpx.MockTransport(handler))
 

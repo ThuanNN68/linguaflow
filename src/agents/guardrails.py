@@ -73,7 +73,7 @@ _WRAPPING_TAG = re.compile(
 
 _CODE_FENCE = re.compile(r"\A```[^\n]*\n(?P<body>.*?)\n?```\Z", re.DOTALL)
 
-# "Translation:", "Here is the translation:", "Bản dịch:" and friends.
+# "Translation:", "Here is the translation:", and similar lead-ins.
 _OUTPUT_LABEL = re.compile(
     r"\A\s*(?:here\s+(?:is|are|'s)\s+)?(?:the\s+)?"
     r"(?:translation|translated\s+(?:text|message|version)|output|result"

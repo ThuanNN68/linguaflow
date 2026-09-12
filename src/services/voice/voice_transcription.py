@@ -23,10 +23,12 @@ from src.schemas.chat import (
     VoiceTranscriptionCompletedEvent,
     VoiceTranscriptionFailedEvent,
 )
+from src.services.assistant.assistant_mentions import schedule_assistant_voice_transcript
 from src.services.messaging.attachment_storage import (
     AttachmentStorageError,
     AttachmentStorageNotFoundError,
 )
+from src.services.messaging.chat import ChatService
 from src.services.messaging.message_postprocessing import schedule_text_dependent_work
 from src.services.voice.transcription import (
     BlankTranscriptError,
@@ -401,9 +403,23 @@ async def _transition_to_completed(
                 Message.deleted_at.is_(None),
             )
         )
+        is_assistant_voice_turn = bool(completed_message) and await ChatService(
+            session
+        ).is_assistant_conversation_for_user(
+            conversation_id=conversation_id,
+            user_id=completed_message.sender_id,
+        )
     if completed_message is None:
         return True
     postprocessing_scheduler(message=completed_message, publisher=publisher)
+    if is_assistant_voice_turn:
+        schedule_assistant_voice_transcript(
+            message_id=message_id,
+            conversation_id=conversation_id,
+            requester_id=completed_message.sender_id,
+            publisher=publisher,
+            trusted_timezone=completed_message.client_timezone,
+        )
     return True
 
 

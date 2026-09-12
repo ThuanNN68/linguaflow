@@ -570,7 +570,7 @@ def human_confirm(state: AssistantState) -> dict[str, Any]:
         return {"approved_proposal_ids": [], "proposal_annotations": {}}
 
     # Approving is where the person supplies what the message never contained.
-    # Somebody writes "review thiết kế 10h sáng thứ Tư"; nobody writes how much
+    # Someone may write "review the design at 10 AM on Wednesday" without stating a duration.
     # warning they want, or notices the extractor read the wrong Wednesday. Both
     # corrections ride in here, keyed by proposal, and reach `confirm_proposal`
     # unchanged.

@@ -121,7 +121,7 @@ class LocalAttachmentProvider:
 
 
 class SupabaseAttachmentProvider:
-    """Supabase Storage backend retained for existing hosted deployments."""
+    """Supabase Storage backend using a server-only API key."""
 
     def __init__(
         self,
@@ -143,10 +143,9 @@ class SupabaseAttachmentProvider:
         )
 
     def _headers(self, content_type: str | None = None) -> dict[str, str]:
-        headers = {
-            "Authorization": f"Bearer {self._settings.supabase_service_role_key}",
-            "apikey": self._settings.supabase_service_role_key,
-        }
+        # sb_secret keys are API keys, not JWTs, and must use `apikey`.
+        key = self._settings.supabase_server_key
+        headers = {"apikey": key}
         if content_type:
             headers["Content-Type"] = content_type
         return headers
@@ -345,7 +344,7 @@ class AttachmentStorage:
             return configured
         if self._settings.s3_bucket:
             return "s3"
-        if self._settings.supabase_url and self._settings.supabase_service_role_key:
+        if self._settings.supabase_url and self._settings.supabase_server_key:
             return "supabase"
         return "local"
 
@@ -360,9 +359,9 @@ class AttachmentStorage:
                 raise AttachmentStorageError("S3_BUCKET is required for the S3 attachment backend")
             return S3AttachmentProvider(self._settings, client=s3_client)
         if self.backend == "supabase":
-            if not self._settings.supabase_url or not self._settings.supabase_service_role_key:
+            if not self._settings.supabase_url or not self._settings.supabase_server_key:
                 raise AttachmentStorageError(
-                    "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for Supabase storage"
+                    "SUPABASE_URL and SUPABASE_SECRET_KEY are required for Supabase storage"
                 )
             return SupabaseAttachmentProvider(self._settings, transport=transport)
         return LocalAttachmentProvider(self._settings)

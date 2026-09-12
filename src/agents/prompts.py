@@ -162,8 +162,8 @@ MESSAGE_BLOCK_TEMPLATE = """\
 #
 # Written as a relationship rather than as a list of pronouns on purpose. There
 # is no pronoun table that survives contact with more than one language pair:
-# Vietnamese picks from anh/chị/em/bạn by relative age and closeness, Japanese
-# reaches for keigo and often drops the pronoun altogether, Korean inflects the
+# Vietnamese uses age- and proximity-based forms, Japanese reaches for keigo
+# and often drops the pronoun altogether, and Korean inflects the
 # verb. Naming the relationship and letting the model apply its own knowledge of
 # the target language is the only version of this that generalises (ADR-23).
 HONORIFIC_DIRECTIVES = {
@@ -204,17 +204,16 @@ TONE_DIRECTIVES = {
 #
 # The first two sentences were added after measuring, and each names a failure
 # seen in a real run rather than one imagined here. Both directions came back
-# rendered one-sided — "Anh/chị có thể xem qua" addresses the reader correctly
-# and leaves the speaker nowhere, when Vietnamese settles the pair together.
-# Asked to address a junior reader, the models reached for `bạn` and
-# `cậu/mình`: neutral and chummy respectively, wrong in different directions.
+# rendered one-sided: the reader was addressed correctly but the speaker was
+# omitted, even though Vietnamese resolves both sides of the relationship.
+# When addressing a junior reader, models chose neutral and overly familiar
+# forms, both of which were wrong for different reasons.
 #
 # Tuning stopped here, and the two attempts that went further are worth knowing
 # about. Telling the model that supplying the speaker's term is grammar rather
-# than an added courtesy made `mistral-small-latest` invert the pair — "Em nhờ
-# anh xem qua" for a *junior* reader, a well-formed sentence asserting the
-# opposite hierarchy. Spelling the direction out again on top of that produced
-# "Em thầy xem giúp con", which is not a register anyone uses at work, and a
+# than an added courtesy made `mistral-small-latest` invert the pair for a
+# junior reader, producing a well-formed sentence that asserted the opposite
+# hierarchy. Repeating the direction then produced a non-work register and a
 # sample that leaked its conversation history into the translation. Past a
 # point, more instruction here does not make a small model more precise; it
 # crowds out the constraints above that were already working.

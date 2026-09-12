@@ -67,7 +67,10 @@ class ConversationMember(Base):
     """A user's membership in a conversation."""
 
     __tablename__ = "conversation_members"
-    __table_args__ = (Index("ix_conversation_members_user_id_conversation_id", "user_id", "conversation_id"),)
+    __table_args__ = (
+        CheckConstraint("role IN ('owner', 'admin', 'member')", name="ck_conversation_members_role"),
+        Index("ix_conversation_members_user_id_conversation_id", "user_id", "conversation_id"),
+    )
 
     conversation_id: Mapped[str] = mapped_column(
         String(36),
@@ -244,6 +247,9 @@ class Message(Base):
     # completed. No second transcript column is intentionally introduced.
     message_type: Mapped[str] = mapped_column(String(10), nullable=False, default="text", server_default="text")
     transcription_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Captured with a voice request so relative dates in a transcript remain
+    # resolvable even when transcription resumes after a process restart.
+    client_timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Structured @mentions are stored alongside the original text so history
     # and realtime deliveries agree without reparsing display names.
     mentions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]", server_default="[]")
@@ -264,7 +270,7 @@ class Message(Base):
     visible_to_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
-    # Provisional on insert â€” it is the sender's preferred_language, which says
+    # Provisional on insert — it is the sender's preferred_language, which says
     # what they usually write in, not what this message is in. The agent's
     # detect_language node overwrites it (docs/api/contract.md section 4.3).
     source_language: Mapped[str] = mapped_column(String(10), nullable=False, default="en")
@@ -274,7 +280,7 @@ class Message(Base):
         server_default=func.now(),
     )
     # SET NULL rather than CASCADE: withdrawing a message must not take the
-    # replies to it down as well â€” they are other people's words.
+    # replies to it down as well — they are other people's words.
     reply_to_message_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("messages.id", ondelete="SET NULL"),
@@ -291,7 +297,7 @@ class Message(Base):
     )
     # Removal is soft: `translation_results` and `translation_attempts` reference
     # this row, so deleting it would take the measurement evidence ADR-16 exists
-    # to preserve down with it, silently skewing the fallback rate in Â§3.4.
+    # to preserve down with it, silently skewing the fallback rate in §3.4.
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -334,7 +340,7 @@ class Attachment(Base):
 
     `message_id` is nullable because the file is uploaded before the message
     that carries it exists: the client uploads, gets an id back, then sends the
-    message referencing it (docs/api/contract.md Â§3.7).
+    message referencing it (docs/api/contract.md §3.7).
     """
 
     __tablename__ = "attachments"

@@ -80,6 +80,7 @@ export async function uploadAndSendVoiceMessage(
       conversation_id: options.conversationId,
       attachment_id: uploaded.id,
       reply_to_message_id: options.replyTo?.id ?? null,
+      client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }));
   } catch {
     options.onOptimisticRejected(clientMessageId);

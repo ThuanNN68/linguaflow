@@ -32,9 +32,10 @@ interface SettingsModalProps {
    *  from "nothing granted": a refusal is an answer and must not re-prompt. */
   agentConsentsAnswered?: boolean;
   onUpdateAgentConsents?: (changes: Partial<Record<AgentConsentScope, boolean>>) => void;
+  initialSection?: SettingsSection;
 }
 
-type SettingsSection = 'language' | 'profile' | 'notifications' | 'privacy' | 'ai';
+export type SettingsSection = 'language' | 'profile' | 'notifications' | 'privacy' | 'ai';
 
 const copy = settingText;
 
@@ -94,13 +95,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   agentConsents = {},
   agentConsentsAnswered = true,
   onUpdateAgentConsents,
+  initialSection = 'language',
 }) => {
   // `preferredLanguage` controls message translation; labels must follow the
   // separately persisted interface language selected by this account.
   const language = settings.interfaceLanguage;
   const assistantText = (english: string, vietnamese: string) =>
     language === 'vi' ? vietnamese : english;
-  const [activeSection, setActiveSection] = useState<SettingsSection>('language');
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
   const [name, setName] = useState(currentUser.name);
   const [bio, setBio] = useState(currentUser.bio || '');
   const [isConsentDialogOpen, setIsConsentDialogOpen] = useState(false);

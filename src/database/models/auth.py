@@ -72,7 +72,7 @@ class User(Base):
         default="en",
     )
     # The language of the interface, separate from the one messages are
-    # translated into (docs/api/contract.md Â§1.2). Defaults to English because that
+    # translated into (docs/api/contract.md §1.2). Defaults to English because that
     # is the one language the label tables are guaranteed to cover in full, and
     # it is what a stranger sees before they have chosen anything.
     interface_language: Mapped[str] = mapped_column(

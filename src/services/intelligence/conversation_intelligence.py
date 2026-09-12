@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypeVar
 
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 
+from src.agents.conversation_intelligence.errors import IntelligenceError, IntelligenceErrorCode
 from src.agents.conversation_intelligence.observability import build_runnable_config
 from src.agents.conversation_intelligence.parsing import invoke_with_repair
 from src.config import Settings, get_settings
@@ -16,6 +19,11 @@ from src.services.assistant.agent_consent import require_consent
 from src.services.shared.llm import get_llm
 
 T = TypeVar("T", bound=BaseModel)
+logger = logging.getLogger(__name__)
+_TIME_HINT = re.compile(r"\b(?:\d{1,2}(?::\d{2}|h\d{0,2})?|hôm nay|ngày mai|mai|tomorrow|today)\b", re.IGNORECASE)
+_DETAIL_HINT = re.compile(r"(?:ghi chú|nhớ|lưu ý|note|remember)", re.IGNORECASE)
+_CONTEXT_BEFORE_WINDOW = timedelta(minutes=15)
+_CONTEXT_AFTER_WINDOW = timedelta(seconds=10)
 
 
 class ConversationIntelligenceService:
@@ -155,9 +163,11 @@ class ConversationIntelligenceService:
         message_id: str,
         user_id: str,
         db: Any,
+        trusted_timezone: str | None = None,
+        update_latest_appointment: bool = False,
     ) -> list[Any]:
         """Extract candidate actions from a specific message and persist as ActionProposals (B-04)."""
-        from sqlalchemy import select
+        from sqlalchemy import and_, or_, select
 
         from src.agents.conversation_intelligence.action_graph import extract_action_candidates
         from src.database.models import Conversation, ConversationMember, Message, User
@@ -218,6 +228,75 @@ class ConversationIntelligenceService:
             else "User"
         )
 
+        # Requests are often split across consecutive messages (for example,
+        # "create a meeting" followed by "tomorrow at 10, remember the camera").
+        # Include a bounded, owner-visible neighborhood so missing fields can be
+        # completed without scanning an unbounded conversation or private rows.
+        context_before = list(
+            reversed(
+                (
+                    await db.scalars(
+                        select(Message)
+                        .where(
+                            Message.conversation_id == conversation_id,
+                            Message.id != msg.id,
+                            Message.deleted_at.is_(None),
+                            Message.original_text != "",
+                            Message.assistant_generated.is_(False),
+                            Message.created_at >= msg.created_at - _CONTEXT_BEFORE_WINDOW,
+                            or_(Message.visibility == "public", Message.visible_to_user_id == user_id),
+                            or_(
+                                Message.created_at < msg.created_at,
+                                and_(Message.created_at == msg.created_at, Message.id < msg.id),
+                            ),
+                        )
+                        .order_by(Message.created_at.desc(), Message.id.desc())
+                        .limit(8)
+                    )
+                ).all()
+            )
+        )
+        context_after = list(
+            (
+                await db.scalars(
+                    select(Message)
+                    .where(
+                        Message.conversation_id == conversation_id,
+                        Message.id != msg.id,
+                        Message.deleted_at.is_(None),
+                        Message.original_text != "",
+                        Message.assistant_generated.is_(False),
+                        Message.created_at <= msg.created_at + _CONTEXT_AFTER_WINDOW,
+                        or_(Message.visibility == "public", Message.visible_to_user_id == user_id),
+                        or_(
+                            Message.created_at > msg.created_at,
+                            and_(Message.created_at == msg.created_at, Message.id > msg.id),
+                        ),
+                    )
+                    .order_by(Message.created_at.asc(), Message.id.asc())
+                    .limit(4)
+                )
+            ).all()
+        )
+        from src.agents.guardrails import sanitize_context_message
+
+        member_names = {member["id"]: member["name"] for member in members_list}
+        nearby_messages = [*context_before, *context_after]
+        context_lines = [
+            f"- {member_names.get(context_message.sender_id, 'User')}: {cleaned}"
+            for context_message in nearby_messages
+            if (cleaned := sanitize_context_message(context_message.original_text))
+        ]
+        # Walk chronologically and overwrite so provenance follows the same
+        # "newest explicit value wins" rule given to the extractor.
+        source_candidates = [*context_before, msg, *context_after]
+        field_sources: dict[str, str] = {}
+        for candidate_message in source_candidates:
+            if _TIME_HINT.search(candidate_message.original_text):
+                field_sources["time"] = candidate_message.id
+            if _DETAIL_HINT.search(candidate_message.original_text):
+                field_sources["details"] = candidate_message.id
+
         # 4. Extract action candidates via LLM
         candidates = await extract_action_candidates(
             message_text=msg.original_text,
@@ -228,6 +307,7 @@ class ConversationIntelligenceService:
             conversation_id=conversation_id,
             message_id=message_id,
             settings=self.settings,
+            nearby_context="\n".join(context_lines),
         )
 
         if not candidates:
@@ -259,6 +339,9 @@ class ConversationIntelligenceService:
             owner_user_id=user_id,
             source_mode="on_demand",
             created_by_user_id=user_id,
+            trusted_timezone=trusted_timezone,
+            field_source_message_ids=field_sources,
+            update_latest_appointment=update_latest_appointment,
         )
 
         return [ActionProposalResponse.model_validate(p) for p in proposals]
@@ -327,14 +410,28 @@ class ConversationIntelligenceService:
         message_ids = list((await db.scalars(statement)).all())
         proposals: list[Any] = []
         for message_id in message_ids:
-            proposals.extend(
-                await self.extract_actions_from_message(
-                    conversation_id=conversation_id,
-                    message_id=message_id,
-                    user_id=user_id,
-                    db=db,
+            try:
+                proposals.extend(
+                    await self.extract_actions_from_message(
+                        conversation_id=conversation_id,
+                        message_id=message_id,
+                        user_id=user_id,
+                        db=db,
+                    )
                 )
-            )
+            except IntelligenceError as exc:
+                # A historical scan may cover many independent messages.  A
+                # transient timeout or malformed model response for one item
+                # must not discard the proposals extracted from the rest.
+                # Provider-wide failures still propagate so the caller can
+                # present an actionable availability error.
+                if exc.code == IntelligenceErrorCode.PROVIDER_UNAVAILABLE:
+                    raise
+                logger.warning(
+                    "Skipping message %s during action scan: %s",
+                    message_id,
+                    exc.code.value,
+                )
         return proposals
 
     @staticmethod

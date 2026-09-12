@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ApiActionProposal } from './api/chat-api';
-import { hasUnresolvedAppointmentClaim, proposalsForAssistantReply } from './proposal-linking';
+import {
+  hasUnresolvedAppointmentClaim,
+  latestAssistantReplyId,
+  proposalsForAssistantReply,
+} from './proposal-linking';
 import type { Message } from './types';
 
 const proposal = (sourceMessageId: string): ApiActionProposal => ({
@@ -72,5 +76,14 @@ describe('proposalsForAssistantReply', () => {
 
     expect(proposalsForAssistantReply(assistantReply('calendar-request'), [appointment]))
       .toEqual([appointment]);
+  });
+});
+
+describe('latestAssistantReplyId', () => {
+  it('keeps inline proposal controls on the newest assistant turn only', () => {
+    const first = { ...assistantReply('source-1'), id: 'assistant-1' };
+    const second = { ...assistantReply('source-2'), id: 'assistant-2' };
+
+    expect(latestAssistantReplyId([first, second])).toBe('assistant-2');
   });
 });

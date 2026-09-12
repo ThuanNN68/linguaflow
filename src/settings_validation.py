@@ -23,10 +23,10 @@ def validate_storage_and_media(settings: Settings) -> None:
         if bool(settings.s3_access_key_id) != bool(settings.s3_secret_access_key):
             raise ValueError("S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY must be configured together")
     if settings.attachment_storage_backend == "supabase" and (
-        not settings.supabase_url.strip() or not settings.supabase_service_role_key.strip()
+        not settings.supabase_url.strip() or not settings.supabase_server_key
     ):
         raise ValueError(
-            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for the Supabase attachment backend"
+            "SUPABASE_URL and SUPABASE_SECRET_KEY are required for the Supabase attachment backend"
         )
     if settings.tts_provider == "openai" and not settings.openai_api_key.strip():
         raise ValueError("OPENAI_API_KEY is required when TTS_PROVIDER=openai")

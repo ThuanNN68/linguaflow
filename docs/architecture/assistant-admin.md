@@ -56,6 +56,25 @@ proposals with source references, structured fields, confidence, status, and
 timestamps. A user can approve, edit, or dismiss a proposal. Only approved and
 revalidated proposals create internal calendar or task records.
 
+Calendar proposal processing is deliberately stateful:
+
+- An assistant request is first persisted as a durable job. A restart can resume
+  pending or interrupted work; an in-memory task is only the current executor.
+- A short context-settling window lets a follow-up such as a time or note join
+  the original request before a proposal is created.
+- A later amendment updates the newest matching pending proposal rather than
+  creating a duplicate. If several pending proposals are plausible and no
+  title identifies one, the assistant asks the user to clarify.
+- The newest explicit date, time, location, and note wins over older context.
+  Proposal fields retain their source-message references so review can show
+  where each value came from.
+- A proposal with no resolved date and start time cannot be approved. The user
+  can complete those fields in the review form before approval.
+
+Voice transcripts enter the same authorized assistant path after transcription
+has completed. The browser timezone captured with the voice message is retained
+for relative expressions such as “tomorrow at 10 pm”.
+
 ## Administration boundary
 
 Administrators may access operational metrics, account state, provider health,
@@ -75,7 +94,7 @@ language pair, term, replacement, scope, and conflicts before approval.
 - Provider timeout: record the attempt and return a controlled retryable status.
 - Invalid structured output: reject it without applying side effects.
 - Retrieval unavailable: answer without private context or return a clear error.
-- Process restart: recover durable pending work where a lifecycle state exists.
+- Process restart: recover pending assistant jobs and expired work leases.
 - Revoked consent: block new work immediately; existing stored data follows the
   documented retention and deletion policy.
 

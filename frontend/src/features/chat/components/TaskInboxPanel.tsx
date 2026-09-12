@@ -195,8 +195,8 @@ export const TaskInboxPanel: React.FC<TaskInboxPanelProps> = ({
   }, [incoming]);
 
   const ordered = useMemo(() => orderProposals(proposals), [proposals]);
-  // Two lists, because they answer different questions. "Cần duyệt" is work
-  // waiting on the person; "Đã duyệt" is a record of what already happened, and
+  // Two lists, because they answer different questions. The awaiting tab is work
+  // waiting on the person; the approved tab records what already happened, and
   // mixing them buries the first under the second as the second grows.
   const awaiting = useMemo(
     () => ordered.filter((item) =>
@@ -283,6 +283,11 @@ export const TaskInboxPanel: React.FC<TaskInboxPanelProps> = ({
           const needsAnswer = proposal.status === "needs_clarification";
           const decided = proposal.status !== "pending_confirmation" && !needsAnswer;
           const proposalWhen = formatProposalWhen(proposal);
+          const missingAppointmentTime = proposal.action_type === "appointment"
+            && !draftFor(proposal).startsAtLocal;
+          const approvalHelp = missingAppointmentTime
+            ? "Chọn ngày và giờ trước khi duyệt"
+            : "Điền nốt thông tin còn thiếu ở trên";
 
           return (
             <article
@@ -342,7 +347,7 @@ export const TaskInboxPanel: React.FC<TaskInboxPanelProps> = ({
                       <button
                         type="button"
                         disabled={busy || !canApprove(proposal, draftFor(proposal))}
-                        title={canApprove(proposal, draftFor(proposal)) ? undefined : "Điền nốt thông tin còn thiếu ở trên"}
+                        title={canApprove(proposal, draftFor(proposal)) ? undefined : approvalHelp}
                         onClick={() => void act(proposal, () => confirmActionProposal(token, proposal.id, decisionCorrections(proposal, draftFor(proposal), optionsFor(proposal))), "Đã duyệt và thêm vào lịch")}
                         className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#1D4ED8] disabled:opacity-50"
                       >
@@ -371,6 +376,12 @@ export const TaskInboxPanel: React.FC<TaskInboxPanelProps> = ({
                     </div>
                   )}
                 </div>
+
+                {missingAppointmentTime && !decided && (
+                  <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                    Chưa có ngày và giờ. Bấm vào đề xuất để bổ sung trước khi duyệt.
+                  </p>
+                )}
 
               {!decided && (
                 <ProposalDecisionForm
@@ -510,6 +521,11 @@ export const TaskInboxPanel: React.FC<TaskInboxPanelProps> = ({
           initialLocation={editingProposal.location ?? ""}
           initialNote={editingProposal.details ?? ""}
           submitLabel="Duyệt"
+          reviewWarning={editingProposal.status === "needs_clarification"
+            ? "Chưa có đủ ngày hoặc giờ họp. Bạn có thể điều chỉnh trước khi duyệt."
+            : !editingProposal.scheduled_start_at && !editingProposal.due_at
+              ? "Chưa có thời gian cụ thể. Vui lòng chọn ngày và giờ trước khi tạo lịch."
+              : undefined}
           onClose={() => setEditingProposal(null)}
           onSubmit={(calendarTask) => {
             const reminder = calendarTask.reminders?.find((item) => item.method === "popup");

@@ -22,6 +22,7 @@ def schedule_text_dependent_work(
     *,
     message: Message,
     publisher: Any,
+    translate: bool = True,
     translation_scheduler: Callable[..., None] | None = None,
     commitment_scheduler: Callable[..., None] | None = None,
     profile_scheduler: Callable[..., None] | None = None,
@@ -46,10 +47,11 @@ def schedule_text_dependent_work(
     if message.message_type == "voice" and message.transcription_status != "completed":
         return
 
-    (translation_scheduler or schedule_translations)(
-        message=message,
-        publisher=publisher,
-    )
+    if translate:
+        (translation_scheduler or schedule_translations)(
+            message=message,
+            publisher=publisher,
+        )
     (commitment_scheduler or schedule_commitment_detection)(
         message_id=message.id,
         conversation_id=message.conversation_id,

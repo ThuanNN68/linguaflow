@@ -86,6 +86,7 @@ describe('uploadAndSendVoiceMessage', () => {
       conversation_id: 'conversation-1',
       attachment_id: 'attachment-1',
       reply_to_message_id: 'reply-1',
+      client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
     expect(event).not.toHaveProperty('text');
     expect(event.type).not.toBe('send_message');

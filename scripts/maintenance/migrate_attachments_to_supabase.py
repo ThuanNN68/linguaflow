@@ -49,10 +49,8 @@ def _object_url(conversation_id: str, attachment_id: str) -> str:
 
 def _headers(content_type: str | None = None) -> dict[str, str]:
     settings = get_settings()
-    headers = {
-        "Authorization": f"Bearer {settings.supabase_service_role_key}",
-        "apikey": settings.supabase_service_role_key,
-    }
+    key = settings.supabase_server_key
+    headers = {"apikey": key}
     if content_type:
         headers["Content-Type"] = content_type
     return headers
@@ -86,9 +84,9 @@ async def _remote_payload(client: httpx.AsyncClient, attachment: Attachment) -> 
 
 async def migrate(*, delete_local_after_verify: bool) -> MigrationCounts:
     settings = get_settings()
-    if not settings.supabase_url or not settings.supabase_service_role_key:
+    if not settings.supabase_url or not settings.supabase_server_key:
         raise RuntimeError(
-            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured"
+            "SUPABASE_URL and SUPABASE_SECRET_KEY must be configured"
         )
 
     counts = MigrationCounts()

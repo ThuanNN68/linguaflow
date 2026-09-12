@@ -4,7 +4,11 @@ import { Message, User, Conversation, LanguageCode, MessageAttachment } from '..
 import { interactionText } from '../i18n';
 import { MessageBubble } from './MessageBubble';
 import type { ApiActionProposal } from '../api/chat-api';
-import { hasUnresolvedAppointmentClaim, proposalsForAssistantReply } from '../proposal-linking';
+import {
+  hasUnresolvedAppointmentClaim,
+  latestAssistantReplyId,
+  proposalsForAssistantReply,
+} from '../proposal-linking';
 import { MissingAppointmentCard } from './MissingAppointmentCard';
 import { missingFields } from '../proposal-approval';
 
@@ -69,6 +73,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onReviewProposals,
   language,
 }) => {
+  const newestAssistantReplyId = latestAssistantReplyId(messages);
   const bottomRef = useRef<HTMLDivElement>(null);
   const isGroup = conversation.type === 'group';
 
@@ -128,7 +133,8 @@ export const MessageList: React.FC<MessageListProps> = ({
         const firstProposal = messageProposals[0];
         const hasMultipleProposals = messageProposals.length > 1;
         const missingSummary = firstProposal ? missingProposalSummary(firstProposal) : null;
-        const reviewFooter = firstProposal && onReviewProposals ? (
+        const isNewestAssistantReply = message.id === newestAssistantReplyId;
+        const reviewFooter = isNewestAssistantReply && firstProposal && onReviewProposals ? (
           <div className="-mx-4 -mb-2.5 mt-3 flex items-center gap-2.5 border-t border-[#E8EAF0] px-4 py-3 dark:border-[#363B49]">
             <CalendarDays className="h-5 w-5 flex-none text-[#2563EB]" aria-hidden="true" />
             <span className="min-w-0 flex-1">
@@ -150,7 +156,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               Xem
             </button>
           </div>
-        ) : calendarToken && onReviewProposals && hasUnresolvedAppointmentClaim(message) ? (
+        ) : isNewestAssistantReply && calendarToken && onReviewProposals && hasUnresolvedAppointmentClaim(message) ? (
           <MissingAppointmentCard token={calendarToken} conversationId={conversation.id}
             sourceMessageId={message.replyTo!.id} onReview={onReviewProposals} />
         ) : undefined;

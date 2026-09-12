@@ -20,11 +20,13 @@ from src.core.rate_limit import (
 )
 from src.database import get_async_session_maker, get_db  # noqa: F401 – get_db kept for test overrides
 from src.schemas.chat import (
+    AssistantConsentRequiredEvent,
     AttachmentResponse,
     AuthEvent,
     AuthOkEvent,
     ErrorEvent,
     MentionNotificationEvent,
+    MentionSummary,
     MessageCreatedEvent,
     MessageReceivedEvent,
     RealtimeMessage,
@@ -218,6 +220,7 @@ async def _handle_voice_message(
                 client_message_id=event.client_message_id,
                 attachment_id=event.attachment_id,
                 reply_to_message_id=event.reply_to_message_id,
+                client_timezone=event.client_timezone,
             )
         except ConversationNotFoundError:
             await db.rollback()
@@ -542,7 +545,10 @@ async def websocket_endpoint(
                     continue
 
                 realtime_message = RealtimeMessage.model_validate(result.message)
-                realtime_message.mentions = message_mentions(result.message)
+                realtime_message.mentions = [
+                    MentionSummary.model_validate(mention)
+                    for mention in message_mentions(result.message)
+                ]
                 realtime_message.assistant_generated = result.message.assistant_generated
                 # Attached separately: the ORM object has no `attachment` field, and
                 # recipients need the file metadata without refetching history.
@@ -578,9 +584,9 @@ async def websocket_endpoint(
                         "message_type": "text",
                     })
                     mentioned_user_ids = tuple(
-                        mention["user_id"]
+                        mention.user_id
                         for mention in realtime_message.mentions
-                        if mention.get("type") == "user" and mention.get("user_id")
+                        if mention.type == "user" and mention.user_id
                     )
                     if mentioned_user_ids:
                         await manager.send_to_users(
@@ -594,35 +600,54 @@ async def websocket_endpoint(
                     # Same predicate `ChatService` used when it decided to keep this
                     # message private. The two must agree: a message hidden from the
                     # conversation but not answered would simply disappear.
-                    if result.for_assistant and await has_consent(db, user_id, "read_conversations"):
-                        # The reply itself reads recent conversation content and
-                        # sends it to an LLM, so it needs the same permission the
-                        # extraction path does. Without it the tag is simply an
-                        # ordinary message: no reply, no proposals, and nothing
-                        # about the conversation leaves the database.
-                        assistant_result = await service.create_assistant_reply(
-                            trigger_message=result.message,
-                        )
-                        assistant_message = RealtimeMessage.model_validate(assistant_result.message)
-                        assistant_message.mentions = message_mentions(assistant_result.message)
-                        assistant_message.assistant_generated = True
-                        await manager.send_to_users(
-                            assistant_result.recipient_ids,
-                            MessageReceivedEvent(message=assistant_message).model_dump(mode="json"),
-                        )
-                        schedule_assistant_mention(
-                            message_id=result.message.id,
-                            conversation_id=result.message.conversation_id,
-                            requester_id=user_id,
-                            request_text=result.message.original_text,
-                            publisher=manager,
-                        )
+                    if result.for_assistant:
+                        # Assistant turns are private and require an explicit
+                        # permission. Report a missing permission to the client
+                        # instead of silently accepting a message that can never
+                        # receive a reply.
+                        if not await has_consent(db, user_id, "read_conversations"):
+                            await _send_event(
+                                websocket,
+                                AssistantConsentRequiredEvent(
+                                    client_message_id=event.client_message_id,
+                                    conversation_id=event.conversation_id,
+                                ),
+                            )
+                        else:
+                            # The reply itself reads recent conversation content
+                            # and sends it to an LLM, so it uses the same consent
+                            # gate as action extraction.
+                            assistant_result = await service.create_assistant_reply(
+                                trigger_message=result.message,
+                            )
+                            assistant_message = RealtimeMessage.model_validate(assistant_result.message)
+                            assistant_message.mentions = [
+                                MentionSummary.model_validate(mention)
+                                for mention in message_mentions(assistant_result.message)
+                            ]
+                            assistant_message.assistant_generated = True
+                            await manager.send_to_users(
+                                assistant_result.recipient_ids,
+                                MessageReceivedEvent(message=assistant_message).model_dump(mode="json"),
+                            )
+                            schedule_assistant_mention(
+                                message_id=result.message.id,
+                                conversation_id=result.message.conversation_id,
+                                requester_id=user_id,
+                                request_text=result.message.original_text,
+                                publisher=manager,
+                                trusted_timezone=event.client_timezone,
+                            )
                     # Guarded by `created`, preserving the existing exactly-once
                     # text-send seam while sharing the same post-text work with a
                     # durably completed voice transcript.
                     schedule_text_dependent_work(
                         message=result.message,
                         publisher=manager,
+                        # An assistant request is already private to its author.
+                        # Translating it creates no recipient value and made the
+                        # assistant thread look like a translation-only feature.
+                        translate=not result.for_assistant,
                         # Pass the module aliases so existing socket tests and
                         # integrations that replace these seams keep working.
                         translation_scheduler=schedule_translations,

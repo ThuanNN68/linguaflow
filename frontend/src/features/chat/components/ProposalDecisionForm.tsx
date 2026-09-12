@@ -79,6 +79,12 @@ export const ProposalDecisionForm: React.FC<ProposalDecisionFormProps> = ({
     minute: "2-digit",
     hour12: true,
   }) ?? "Chưa xác định";
+  const formatSourceTime = (value: string) => new Date(value).toLocaleString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+  });
 
   return (
     <div className="mt-3 space-y-3">
@@ -192,6 +198,13 @@ export const ProposalDecisionForm: React.FC<ProposalDecisionFormProps> = ({
         </label>
       </div>
         </>
+      )}
+
+      {(proposal.time_source_at || proposal.details_source_at) && (
+        <div className="space-y-1 border-t border-[#E6EAF1] pt-2 text-[11px] text-[#74798C] dark:border-[#34394A] dark:text-[#9DA3B4]">
+          {proposal.time_source_at && <p>Thời gian lấy từ tin nhắn lúc {formatSourceTime(proposal.time_source_at)}.</p>}
+          {proposal.details_source_at && <p>Ghi chú lấy từ tin nhắn lúc {formatSourceTime(proposal.details_source_at)}.</p>}
+        </div>
       )}
     </div>
   );

@@ -116,6 +116,8 @@ class ActionProposalResponse(BaseModel):
     id: str
     conversation_id: str
     source_message_id: str
+    time_source_message_id: str | None = None
+    details_source_message_id: str | None = None
     owner_user_id: str
     action_type: ActionProposalType
     status: ActionProposalStatus
@@ -132,6 +134,8 @@ class ActionProposalResponse(BaseModel):
     source_sender_name: str | None = None
     source_conversation_name: str | None = None
     source_conversation_type: Literal["direct", "group"] | None = None
+    time_source_at: UtcDatetime | None = None
+    details_source_at: UtcDatetime | None = None
     raw_time_expression: str | None = None
     scheduled_start_at: UtcDatetime | None = None
     scheduled_end_at: UtcDatetime | None = None
@@ -160,7 +164,7 @@ class ClarifyProposalRequest(BaseModel):
 
 class ConfirmProposalRequest(BaseModel):
     # Approving is where a person adds the detail the message never contained.
-    # The extractor reads what was said — "review thiết kế 10h sáng thứ Tư" — and
+    # The extractor reads what was said — "review the design at 10 AM on Wednesday" — and
     # nobody says how long beforehand they want to be nudged, so this is asked
     # at approval rather than guessed from the text.
     #

@@ -37,7 +37,7 @@ class TranslationResult(Base):
     """One message rendered for one target language and one standing.
 
     Members who share both a target language *and* an honorific profile share a
-    row, so the `translation_id` they each receive is the same â€” which is what
+    row, so the `translation_id` they each receive is the same — which is what
     lets F-05 attach feedback to a translation rather than to a recipient
     (docs/api/contract.md section 4.4).
 
@@ -163,7 +163,7 @@ class TranslationEdit(Base):
     Append-only: editing again writes a new row rather than replacing the old
     one, and the row with the newest `created_at` *for that editor* is the one
     in effect. The history behind it is what a later admin feature would read
-    to compare human wording against the machine's (docs/api/contract.md Â§3.10).
+    to compare human wording against the machine's (docs/api/contract.md §3.10).
 
     Private to its author among conversation members. The anonymous admin
     quality-review queue may compare this wording with the source and machine
@@ -202,7 +202,7 @@ class TranslationEdit(Base):
     # Stamped in Python, unlike every other table here, because this is the only
     # column that has to *order* rows rather than just date them: the newest
     # edit is the one in effect. `func.now()` renders as SQLite's
-    # CURRENT_TIMESTAMP, which resolves to whole seconds â€” two saves inside one
+    # CURRENT_TIMESTAMP, which resolves to whole seconds — two saves inside one
     # second tie, and the tie was resolved by primary key, so fixing a typo and
     # saving twice quickly could bring the older wording back.
     created_at: Mapped[datetime] = mapped_column(
@@ -223,7 +223,7 @@ class TranslationAttempt(Base):
     deserves its own row, so there is no unique constraint, and the columns are
     free to change with what the team wants to measure.
 
-    Writes must never be allowed to fail a translation â€” see `record_attempt`
+    Writes must never be allowed to fail a translation — see `record_attempt`
     in `src/services/language/translation.py`, which is the only writer.
     """
 
@@ -232,6 +232,10 @@ class TranslationAttempt(Base):
         CheckConstraint(
             _in_clause("outcome", ATTEMPT_OUTCOMES),
             name="ck_translation_attempts_outcome",
+        ),
+        CheckConstraint(
+            _in_clause("translation_tone", TRANSLATION_TONES),
+            name="ck_translation_attempts_translation_tone",
         ),
         Index("ix_translation_attempts_created_at", "created_at"),
         Index("ix_translation_attempts_message_id", "message_id"),
@@ -250,7 +254,7 @@ class TranslationAttempt(Base):
     target_language: Mapped[str] = mapped_column(String(10), nullable=False)
     # The standing this attempt translated for. Without it the table reports one
     # row per (message, language) as it always did, except there are now up to
-    # four of them and nothing to tell them apart â€” every latency percentile
+    # four of them and nothing to tell them apart — every latency percentile
     # would quietly mix four distributions (docs/api/contract.md section 5, note 9
     # allows this table's columns to change with what is being measured).
     honorific_profile: Mapped[str] = mapped_column(
@@ -290,7 +294,7 @@ class TranslationAttempt(Base):
     total_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     context_lines: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # Machine-readable code, not prose â€” the log lines stay for humans.
+    # Machine-readable code, not prose — the log lines stay for humans.
     fallback_reason: Mapped[str] = mapped_column(String(30), nullable=False, default="")
 
     # SET NULL rather than CASCADE, the opposite of `feedbacks`, and on purpose:
@@ -714,7 +718,7 @@ class CorrectionLog(Base):
     # than in the miner where it would need the conversation back again.
     # Anonymised the same way as `anonymized_snippet` below (names, links and
     # long digit runs stripped), but drawn from `Message.original_text` rather
-    # than the machine's rendering â€” the sender's own wording, in whichever
+    # than the machine's rendering — the sender's own wording, in whichever
     # language they wrote it, rather than the reader's reading language. An
     # admin judging a proposed term otherwise sees only one side of the
     # translation it came from (24/08).

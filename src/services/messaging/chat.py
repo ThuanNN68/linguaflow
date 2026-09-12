@@ -387,6 +387,31 @@ class ChatService:
         await self._db.refresh(conversation)
         return ConversationResult(conversation=conversation, created=True)
 
+    async def is_assistant_conversation_for_user(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+    ) -> bool:
+        """Return whether this is the caller's one-member Assistant thread.
+
+        The title alone is not a capability: a user can create a group with a
+        similar name.  The owner and sole-member checks keep voice processing
+        limited to the durable thread created by
+        :meth:`get_or_create_assistant_conversation`.
+        """
+        conversation = await self._db.get(Conversation, conversation_id)
+        if (
+            conversation is None
+            or conversation.type != "group"
+            or conversation.title != self.assistant_conversation_title
+            or conversation.created_by != user_id
+            or conversation.deleted_at is not None
+        ):
+            return False
+        member_ids = await self.get_conversation_member_ids(conversation_id=conversation_id)
+        return member_ids == (user_id,)
+
     async def _find_direct_conversation(
         self,
         member_ids: Sequence[str],
@@ -1104,6 +1129,7 @@ class ChatService:
         client_message_id: str,
         attachment_id: str,
         reply_to_message_id: str | None = None,
+        client_timezone: str | None = None,
     ) -> SendMessageResult:
         """Atomically persist a pending voice message and claim its audio.
 
@@ -1201,6 +1227,7 @@ class ChatService:
             original_text="",
             message_type="voice",
             transcription_status="pending",
+            client_timezone=client_timezone,
             source_language=sender_language or "en",
             reply_to_message_id=reply_target_id,
         )
@@ -1270,6 +1297,57 @@ class ChatService:
         await self._db.commit()
         return SendMessageResult(reply, (trigger_message.sender_id,), True)
 
+    async def create_assistant_notice(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        text: str,
+        idempotency_key: str,
+        source_language: str = "en",
+    ) -> SendMessageResult:
+        """Persist a private assistant status message in an authorized thread.
+
+        On-demand assistant operations use this for outcomes that have no
+        proposal card to render, such as an appointment scan that found
+        nothing. Keeping the notice as a normal durable message means a socket
+        reconnect or page reload cannot erase the result of the operation.
+        """
+        conversation = await self._db.get(Conversation, conversation_id)
+        if conversation is None:
+            raise ConversationNotFoundError(conversation_id)
+        member_ids = await self.get_conversation_member_ids(
+            conversation_id=conversation_id,
+        )
+        if user_id not in member_ids:
+            raise ConversationMembershipError(conversation_id, user_id)
+
+        existing = await self._find_message_by_client_message_id(
+            sender_id=user_id,
+            conversation_id=conversation_id,
+            client_message_id=idempotency_key,
+        )
+        if existing is not None:
+            return SendMessageResult(existing, (user_id,), False)
+
+        notice = Message(
+            client_message_id=idempotency_key,
+            conversation_id=conversation_id,
+            # The assistant is not represented by a login account. As with an
+            # ordinary assistant reply, the owner is the sender of record and
+            # `assistant_generated` controls the UI identity.
+            sender_id=user_id,
+            original_text=text,
+            source_language=source_language,
+            assistant_generated=True,
+            visibility="private",
+            visible_to_user_id=user_id,
+        )
+        self._db.add(notice)
+        await self._db.commit()
+        await self._db.refresh(notice)
+        return SendMessageResult(notice, (user_id,), True)
+
     async def post_assistant_notice(self, *, user_id: str, text: str, idempotency_key: str) -> SendMessageResult | None:
         """Say something to one person in their private thread with the assistant.
 
@@ -1282,8 +1360,8 @@ class ChatService:
         them: it waits, and it is still there tomorrow.
 
         `idempotency_key` becomes the `client_message_id`, so a reminder cannot
-        be posted twice if delivery is retried. Returns ``None`` when this key
-        has already been posted.
+        be posted twice if delivery is retried. An existing message is returned
+        as an idempotent success.
 
         Never raises: the caller is a background scheduler, and a reminder that
         could not be written must not stop the ones behind it.
@@ -1296,7 +1374,7 @@ class ChatService:
                 client_message_id=idempotency_key,
             )
             if existing is not None:
-                return None
+                return SendMessageResult(existing, (user_id,), False)
 
             notice = Message(
                 client_message_id=idempotency_key,
@@ -1386,7 +1464,7 @@ class ChatService:
                             # Naming the syntax matters: an earlier version said
                             # only "no markdown headings" and the model read bold
                             # titles as permitted, so replies arrived showing
-                            # literal `**Tóm tắt**` in a client that renders text
+                            # literal `**Summary**` in a client that renders text
                             # verbatim.
                             "ĐỊNH DẠNG: chỉ viết văn bản thuần, đúng như nó sẽ được hiển thị. "
                             "Giao diện chat hiện nguyên văn và KHÔNG diễn giải Markdown. "

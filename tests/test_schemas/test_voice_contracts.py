@@ -138,10 +138,12 @@ def test_send_voice_contract_requires_an_attachment_and_forbids_text() -> None:
         "conversation_id": "conversation-1",
         "attachment_id": "recording.webm",
         "reply_to_message_id": None,
+        "client_timezone": "Asia/Ho_Chi_Minh",
     }
 
     event = SendVoiceMessageEvent.model_validate(payload)
     assert event.attachment_id == "recording.webm"
+    assert event.client_timezone == "Asia/Ho_Chi_Minh"
     assert "text" not in event.model_dump()
 
     with pytest.raises(ValidationError):
@@ -152,6 +154,8 @@ def test_send_voice_contract_requires_an_attachment_and_forbids_text() -> None:
         SendVoiceMessageEvent.model_validate({**payload, "text": "fake transcript"})
     with pytest.raises(ValidationError):
         SendVoiceMessageEvent.model_validate({**payload, "sender_id": "forged"})
+    with pytest.raises(ValidationError):
+        SendVoiceMessageEvent.model_validate({**payload, "client_timezone": "Asia/Not_A_Zone"})
 
 
 @pytest.mark.parametrize("text", [None, "", "   "])

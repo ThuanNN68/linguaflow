@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select, update
@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 # arrived at 14:45:00 or 14:45:40, and a tighter loop is a query per second
 # against a table that is almost always empty.
 DEFAULT_SCAN_SECONDS = 60
+REMINDER_CLAIM_TIMEOUT = timedelta(minutes=5)
+REMINDER_MAX_ATTEMPTS = 5
 
 
 def _reminder_text(event: Any) -> str:
@@ -48,7 +50,7 @@ def _reminder_text(event: Any) -> str:
     chat shows it verbatim.
     """
     when = event.starts_at.strftime("%H:%M %d/%m/%Y")
-    line = f"Nhắc bạn: \"{event.title}\" bắt đầu lúc {when}."
+    line = f'Nhắc bạn: "{event.title}" bắt đầu lúc {when}.'
     if event.location:
         line += f" Địa điểm: {event.location}."
     return line
@@ -61,16 +63,16 @@ async def _post_reminder_message(
     event: Any,
     publisher: Any,
     factory: Callable[[], Any],
-) -> None:
+) -> bool:
     """Write the due reminder into the person's thread with the assistant.
 
     Imported inside the function: `chat.py` is a large module that pulls in much
     of the service layer, and importing it at module scope would drag all of it
     into every process that merely starts the scheduler.
 
-    Never raises. A reminder already counts as delivered by the time this runs
-    -- the row was claimed before anything was sent -- so a failure here costs
-    one message in a thread, and must not take down the scan behind it.
+    Never raises. A lease is held while this runs, but delivery is recorded only
+    after this durable message exists. A failure returns ``False`` so the caller
+    can release the lease and schedule a retry.
     """
     from src.schemas.chat import MessageReceivedEvent, RealtimeMessage
     from src.services.messaging.chat import ChatService
@@ -83,15 +85,21 @@ async def _post_reminder_message(
                 idempotency_key=f"reminder:{reminder_id}",
             )
             if posted is None:
-                return
+                return False
             realtime = RealtimeMessage.model_validate(posted.message)
             realtime.assistant_generated = True
             payload = MessageReceivedEvent(message=realtime).model_dump(mode="json")
-        await publisher.send_to_users((user_id,), payload)
+        if posted.created:
+            try:
+                await publisher.send_to_users((user_id,), payload)
+            except Exception:
+                # The durable message is the delivery guarantee. A disconnected
+                # socket recovers it from history and must not cause a retry.
+                logger.warning("Reminder realtime message publish failed", exc_info=True)
+        return True
     except Exception:
-        logger.warning(
-            "Posting the reminder message failed for user %s", user_id, exc_info=True
-        )
+        logger.warning("Posting the reminder message failed for user %s", user_id, exc_info=True)
+        return False
 
 
 async def scan_due_reminders(
@@ -118,6 +126,7 @@ async def scan_due_reminders(
     """
     factory = session_factory or get_async_session_maker()
     moment = now or datetime.now(UTC)
+    stale_claim = moment - REMINDER_CLAIM_TIMEOUT
 
     try:
         async with factory() as session:
@@ -128,15 +137,15 @@ async def scan_due_reminders(
                         Reminder.remind_at <= moment,
                         Reminder.delivered_at.is_(None),
                         Reminder.dismissed_at.is_(None),
+                        (Reminder.next_attempt_at.is_(None)) | (Reminder.next_attempt_at <= moment),
+                        (Reminder.claimed_at.is_(None)) | (Reminder.claimed_at <= stale_claim),
                     )
-                    .values(delivered_at=moment)
+                    .values(claimed_at=moment, attempts=Reminder.attempts + 1)
                     .returning(Reminder.id, Reminder.user_id, Reminder.calendar_event_id)
                 )
             ).all()
-            # Committed before anything is sent. A socket that fails must not
-            # roll back the claim and hand the same reminder to the next scan;
-            # a missed notification is better than a loop that repeats one every
-            # minute forever.
+            # Commit only the lease. Delivery is recorded after the durable
+            # Assistant message exists, so failures remain retryable.
             await session.commit()
 
             if not claimed:
@@ -146,9 +155,7 @@ async def scan_due_reminders(
                 event.id: event
                 for event in (
                     await session.scalars(
-                        select(CalendarEvent).where(
-                            CalendarEvent.id.in_([row.calendar_event_id for row in claimed])
-                        )
+                        select(CalendarEvent).where(CalendarEvent.id.in_([row.calendar_event_id for row in claimed]))
                     )
                 ).all()
             }
@@ -159,37 +166,57 @@ async def scan_due_reminders(
     for row in claimed:
         event = events.get(row.calendar_event_id)
         if event is None or event.status != "active":
-            # Cancelled between the claim and the send. Already marked
-            # delivered, which is right: nothing is owed for it any more.
+            async with factory() as session:
+                await session.execute(
+                    update(Reminder)
+                    .where(Reminder.id == row.id, Reminder.delivered_at.is_(None))
+                    .values(delivered_at=moment, claimed_at=None, last_error=None)
+                )
+                await session.commit()
             continue
-        try:
-            await publisher.send_to_user(
-                row.user_id,
-                {
-                    "type": "reminder_due",
-                    "reminder": {
-                        "id": row.id,
-                        "calendar_event_id": event.id,
-                        "title": event.title,
-                        "starts_at": event.starts_at.isoformat(),
-                        "location": event.location,
-                    },
-                },
-            )
-        except Exception:
-            logger.warning("Reminder delivery failed for user %s", row.user_id, exc_info=True)
-
-        # And leave it in the person's thread with the assistant. The event
-        # above only reaches a socket that happens to be open right now; the
-        # message is what they find when they come back, and what tells them
-        # afterwards that they were reminded at all.
-        await _post_reminder_message(
+        durable = await _post_reminder_message(
             user_id=row.user_id,
             reminder_id=row.id,
             event=event,
             publisher=publisher,
             factory=factory,
         )
+        if durable:
+            try:
+                await publisher.send_to_user(
+                    row.user_id,
+                    {
+                        "type": "reminder_due",
+                        "reminder": {
+                            "id": row.id,
+                            "calendar_event_id": event.id,
+                            "title": event.title,
+                            "starts_at": event.starts_at.isoformat(),
+                            "location": event.location,
+                        },
+                    },
+                )
+            except Exception:
+                logger.warning("Reminder delivery failed for user %s", row.user_id, exc_info=True)
+
+        async with factory() as session:
+            reminder = await session.get(Reminder, row.id)
+            if reminder is None or reminder.delivered_at is not None:
+                continue
+            reminder.claimed_at = None
+            if durable:
+                reminder.delivered_at = moment
+                reminder.last_error = None
+                reminder.next_attempt_at = None
+            else:
+                reminder.last_error = "assistant_notice_failed"
+                if reminder.attempts >= REMINDER_MAX_ATTEMPTS:
+                    # Keep it visible to operations rather than pretending it
+                    # was delivered; a manual retry can clear next_attempt_at.
+                    reminder.next_attempt_at = datetime.max.replace(tzinfo=UTC)
+                else:
+                    reminder.next_attempt_at = moment + timedelta(seconds=min(2**reminder.attempts, 60))
+            await session.commit()
 
     return len(claimed)
 
@@ -234,6 +261,7 @@ def start_reminder_scheduler(*, publisher: Any, settings: Any = None) -> Any | N
         # Missing a tick is normal under load; running the skipped ones back to
         # back afterwards would achieve nothing the next scan does not.
         coalesce=True,
+        next_run_time=datetime.now(UTC),
     )
     scheduler.start()
     logger.info(

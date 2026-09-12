@@ -41,7 +41,7 @@ interface MessageComposerProps {
   onCreateAppointment?: () => void;
   onScanAppointments?: (amount: number, unit: 'hours' | 'days' | 'weeks') => Promise<void>;
   onSummarizeConversation?: () => void;
-  /** The assistant accepts text requests and calendar review, not media uploads. */
+  /** The Assistant accepts text and voice requests; generic file uploads stay disabled. */
   assistantMode?: boolean;
 }
 
@@ -461,7 +461,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           {/* Attachment Popup Menu */}
           {showAttachMenu && (
             <div className="absolute bottom-full left-0 mb-2 w-44 bg-white dark:bg-[#232630] border border-[#E8EAF0] dark:border-[#2A2E3D] rounded-xl shadow-xl p-1 z-30 animate-in fade-in zoom-in-95 duration-100">
-              {!assistantMode && <>
+              <>
                 <button
                   type="button"
                   onClick={() => void startRecording()}
@@ -472,14 +472,14 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                   <Mic className="w-4 h-4 text-rose-500" />
                   <span>{interactionText(language, 'Voice message')}</span>
                 </button>
-                <button
+                {!assistantMode && <button
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#1E2230] dark:text-[#E2E5F0] rounded-lg hover:bg-[#F7F8FC] dark:hover:bg-[#2A2E3D] text-left"
                 >
                   <Paperclip className="w-4 h-4 text-blue-500" />
                   <span>{interactionText(language, 'Document or File')}</span>
-                </button>
-              </>}
+                </button>}
+              </>
               {onCreateAppointment && (
                 <button
                   type="button"
@@ -526,7 +526,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 <span className="grid h-7 w-7 flex-none place-items-center rounded-md bg-[#E8F1FF] text-[#2563EB] dark:bg-[#2563EB]/20 dark:text-[#93C5FD]"><CalendarSearch className="h-3.5 w-3.5" /></span>
                 <div className="min-w-0">
                   <p className="text-xs font-bold leading-4 text-[#1E2230] dark:text-[#F5F6FA]">Rà soát lịch hẹn</p>
-                  <p className="text-[10px] leading-3.5 text-[#74798C] dark:text-[#9DA3B4]">Tìm trong tối đa 100 tin nhắn mới nhất của chat này trong khoảng đã chọn.</p>
+                  <p className="text-[10px] leading-3.5 text-[#74798C] dark:text-[#9DA3B4]">Tìm lịch hẹn trong tin nhắn gần đây.</p>
                 </div>
               </div>
             </div>

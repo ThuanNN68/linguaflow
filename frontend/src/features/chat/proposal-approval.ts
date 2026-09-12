@@ -160,12 +160,17 @@ export function missingFields(proposal: ApiActionProposal): string[] {
 
 /** Whether this proposal can be approved as it stands.
  *
- *  The interface used to offer "Duyệt" on anything undecided, including
+ *  The interface used to offer approval for anything undecided, including
  *  proposals the server would refuse with "still has unresolved required
  *  fields" — the button looked available and answered with an error.
  */
 export function canApprove(proposal: ApiActionProposal, draft: ProposalDraft): boolean {
   const missing = missingFields(proposal);
+  // A calendar entry without a start is not an appointment. Some older
+  // proposals were persisted as pending_confirmation with an empty
+  // `missing_fields` array, so relying on that array alone left an active
+  // Approve button which could never create a usable event.
+  if (proposal.action_type === "appointment" && !draft.startsAtLocal) return false;
   if (missing.includes("time") && !draft.startsAtLocal) return false;
   if (missing.includes("location") && !draft.location.trim()) return false;
   if (missing.includes("title") && !draft.title.trim()) return false;

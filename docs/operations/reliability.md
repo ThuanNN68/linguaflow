@@ -7,7 +7,8 @@ and incident response signals for LinguaFlow.
 
 - The API remains responsive when optional AI providers fail.
 - Durable messages are committed before acknowledgement and broadcast.
-- A process restart does not leave recoverable voice work permanently pending.
+- A process restart does not leave recoverable voice or assistant work permanently
+  pending.
 - Readiness fails when required dependencies cannot safely serve traffic.
 - Private data is not exposed as part of fallback or diagnostic behavior.
 
@@ -55,8 +56,14 @@ credentials and validation errors are not retried.
 
 User-visible long-running work uses a durable lifecycle state. Workers claim an
 operation idempotently, record attempts, and persist terminal state. Startup
-recovery scans pending voice transcription work. In-memory task sets are only
-execution bookkeeping and must not be the sole record of durable work.
+recovery scans pending voice transcription work and assistant jobs; expired
+assistant leases are eligible to run again. In-memory task sets are only execution
+bookkeeping and must not be the sole record of durable work.
+
+Reminder delivery uses the same principle: a worker lease prevents concurrent
+delivery, a durable assistant message is written before `delivered_at`, and a
+failed write is retried with bounded exponential backoff. A WebSocket broadcast
+failure does not invalidate a persisted reminder message.
 
 ## Data durability
 
@@ -115,6 +122,7 @@ Alert on symptoms that require action:
 - database pool exhaustion or lock accumulation;
 - rapidly increasing stale WebSocket cleanup;
 - pending voice operations older than the recovery objective;
+- pending or repeatedly failing assistant jobs and reminder delivery lag;
 - Redis fanout errors in a scaled deployment;
 - provider circuit open beyond its expected recovery window;
 - missing or failed backups.
@@ -138,6 +146,8 @@ Alert on symptoms that require action:
 - Multi-worker Redis fanout and reconnect synchronization.
 - Provider timeout, retry, open-circuit, and recovery behavior.
 - Process termination during voice transcription and startup recovery.
+- Process termination during assistant processing or reminder delivery, including
+  recovery after an expired claim.
 - Migration on a production-like dataset.
 - Backup restore with attachment verification.
 

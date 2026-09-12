@@ -340,7 +340,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
           submitLabel="Duyệt"
           reviewWarning={reviewingProposal.status === 'needs_clarification'
             ? 'Chưa có đủ ngày hoặc giờ họp. Bạn có thể điều chỉnh trước khi duyệt.'
-            : undefined}
+            : !reviewingProposal.scheduled_start_at && !reviewingProposal.due_at
+              ? 'Chưa có thời gian cụ thể. Vui lòng chọn ngày và giờ trước khi tạo lịch.'
+              : undefined}
           onClose={() => setReviewingProposal(null)}
           onSubmit={(task) => {
             const reminder = task.reminders?.find((item) => item.method === 'popup');

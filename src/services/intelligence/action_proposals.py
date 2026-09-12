@@ -10,7 +10,7 @@ from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +30,27 @@ _LOCAL_DATE_TIME = re.compile(
     r"(?:ngày\s*)?(?P<day>\d{1,2})[/-](?P<month>\d{1,2})[/-](?P<year>\d{4})\s*$",
     re.IGNORECASE,
 )
+_RELATIVE_DAY = re.compile(r"\b(?P<day>hôm nay|today|ngày mai|mai|tomorrow|ngày kia)\b", re.IGNORECASE)
+_CLOCK_TIME = re.compile(
+    r"\b(?P<hour>\d{1,2})(?:\s*(?::|h|giờ)\s*(?P<minute>\d{1,2})?)?\b",
+    re.IGNORECASE,
+)
+_DAY_PART = re.compile(
+    r"\b(?P<part>sáng|trưa|chiều|tối|đêm|morning|afternoon|evening|night)\b",
+    re.IGNORECASE,
+)
+_GENERIC_APPOINTMENT_WORDS = {
+    "a",
+    "an",
+    "the",
+    "cuộc",
+    "lịch",
+    "hẹn",
+    "họp",
+    "meeting",
+    "appointment",
+    "event",
+}
 
 
 class ActionProposalError(Exception):
@@ -46,6 +67,10 @@ class ActionProposalOwnershipError(ActionProposalError):
 
 class ActionProposalStatusError(ActionProposalError):
     """The requested transition is not valid for the current state."""
+
+
+class ActionProposalAmbiguousTargetError(ActionProposalError):
+    """A correction could refer to more than one undecided appointment."""
 
 
 @dataclass(frozen=True)
@@ -93,7 +118,8 @@ def _relative_time_expression(value: str | None) -> bool:
         return False
     lowered = value.casefold()
     return bool(
-        _RELATIVE_TIME.search(lowered)
+        _RELATIVE_DAY.search(lowered)
+        or _RELATIVE_TIME.search(lowered)
         or _TOMORROW_MORNING.search(lowered)
         or _NEXT_FRIDAY.search(lowered)
     )
@@ -103,15 +129,37 @@ def _resolve_relative_time(raw: str, reference: datetime, timezone: ZoneInfo) ->
     """Resolve the deliberately small, execution-safe relative-time grammar."""
 
     local_reference = _as_utc(reference).astimezone(timezone)
+    relative_day = _RELATIVE_DAY.search(raw)
+    clock = _CLOCK_TIME.search(raw)
+    if relative_day and clock:
+        hour = int(clock.group("hour"))
+        minute = int(clock.group("minute") or 0)
+        part_match = _DAY_PART.search(raw)
+        part = part_match.group("part").casefold() if part_match else None
+        if part in {"chiều", "tối", "đêm", "afternoon", "evening", "night"} and 1 <= hour <= 11:
+            hour += 12
+        elif part in {"sáng", "morning"} and hour == 12:
+            hour = 0
+        elif part == "trưa" and 1 <= hour <= 3:
+            hour += 12
+        if hour > 23 or minute > 59:
+            return None
+        day_token = relative_day.group("day").casefold()
+        day_offset = 0 if day_token in {"hôm nay", "today"} else 2 if day_token == "ngày kia" else 1
+        local = datetime.combine(
+            local_reference.date() + timedelta(days=day_offset),
+            time(hour=hour, minute=minute),
+            timezone,
+        )
+        return local.astimezone(UTC)
+
     match = _RELATIVE_TIME.search(raw)
     if match:
         hour = int(match.group("hour"))
         minute = int(match.group("minute") or 0)
         if hour > 23 or minute > 59:
             return None
-        local = datetime.combine(
-            local_reference.date() + timedelta(days=1), time(hour=hour, minute=minute), timezone
-        )
+        local = datetime.combine(local_reference.date() + timedelta(days=1), time(hour=hour, minute=minute), timezone)
         return local.astimezone(UTC)
     if _TOMORROW_MORNING.search(raw):
         local = datetime.combine(local_reference.date() + timedelta(days=1), time(hour=9), timezone)
@@ -223,9 +271,7 @@ def normalize_action_time(
     if candidate_datetime is not None:
         try:
             canonical_candidate = _as_utc(candidate_datetime)
-            return TemporalResolution(
-                canonical_candidate, raw, None, tuple(sorted(missing))
-            )
+            return TemporalResolution(canonical_candidate, raw, None, tuple(sorted(missing)))
         except ValueError:
             missing.add("time")
     return TemporalResolution(None, raw, None, tuple(sorted(missing)))
@@ -312,15 +358,20 @@ def _load_missing(value: str | None) -> list[str]:
         parsed = json.loads(value or "[]")
     except json.JSONDecodeError:
         return ["manual_correction_required"]
-    return [
-        _MISSING_FIELD_ALIASES.get(item, item)
-        for item in parsed
-        if isinstance(item, str)
-    ]
+    return [_MISSING_FIELD_ALIASES.get(item, item) for item in parsed if isinstance(item, str)]
 
 
 def _dump_missing(values: list[str] | tuple[str, ...] | set[str]) -> str:
     return json.dumps(sorted(set(values)))
+
+
+def _appointment_title_tokens(value: str) -> set[str]:
+    """Extract meaningful words used to identify an amendment target."""
+    return {
+        token
+        for token in re.findall(r"\w+", value.casefold(), flags=re.UNICODE)
+        if len(token) > 1 and token not in _GENERIC_APPOINTMENT_WORDS
+    }
 
 
 class ActionProposalService:
@@ -334,6 +385,44 @@ class ActionProposalService:
         if proposal is None:
             raise ActionProposalNotFoundError("Action proposal not found")
         return proposal
+
+    async def _appointment_amendment_target(
+        self,
+        *,
+        conversation_id: str,
+        owner_user_id: str,
+        candidate_title: str,
+    ) -> ActionProposal | None:
+        active = list(
+            (
+                await self.db.scalars(
+                    select(ActionProposal)
+                    .where(
+                        ActionProposal.conversation_id == conversation_id,
+                        ActionProposal.owner_user_id == owner_user_id,
+                        ActionProposal.action_type == "appointment",
+                        ActionProposal.status.in_(_ACTIVE_STATUSES),
+                    )
+                    .order_by(ActionProposal.updated_at.desc(), ActionProposal.id.desc())
+                    .limit(10)
+                    .with_for_update()
+                )
+            ).all()
+        )
+        if not active:
+            return None
+        if len(active) == 1:
+            return active[0]
+
+        requested = _appointment_title_tokens(candidate_title)
+        scored = [
+            (len(requested.intersection(_appointment_title_tokens(proposal.title))), proposal) for proposal in active
+        ]
+        best_score = max(score for score, _ in scored)
+        best = [proposal for score, proposal in scored if score == best_score and score > 0]
+        if len(best) == 1:
+            return best[0]
+        raise ActionProposalAmbiguousTargetError("More than one pending appointment matches this correction")
 
     async def _get_owned(self, proposal_id: str, user_id: str) -> ActionProposal:
         proposal = await self.get_proposal(proposal_id)
@@ -409,6 +498,9 @@ class ActionProposalService:
         owner_user_id: str,
         source_mode: str,
         created_by_user_id: str | None = None,
+        trusted_timezone: str | None = None,
+        field_source_message_ids: dict[str, str] | None = None,
+        update_latest_appointment: bool = False,
     ) -> list[ActionProposal]:
         """Persist candidates with one savepoint per insert conflict.
 
@@ -420,12 +512,22 @@ class ActionProposalService:
         if source is None or source.conversation_id != conversation_id:
             raise ActionProposalNotFoundError("Source message not found")
 
+        # Serialize proposal writes for one owner/conversation across processes.
+        # Row locks cannot help when both workers observe that no row exists yet;
+        # this transaction-scoped advisory lock closes that insertion race and
+        # is released automatically on commit or rollback.
+        await self.db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:scope, 0))"),
+            {"scope": f"action-proposal:{conversation_id}:{owner_user_id}"},
+        )
+
         saved: list[ActionProposal] = []
+        sources = field_source_message_ids or {}
         for candidate in candidates:
             normalized = normalize_action_time(
                 raw_time_expression=candidate.raw_time_expression,
                 reference_timestamp=source.created_at,
-                trusted_timezone=None,
+                trusted_timezone=trusted_timezone,
                 candidate_datetime=candidate.scheduled_time,
                 existing_missing_fields=candidate.missing_fields,
             )
@@ -438,9 +540,7 @@ class ActionProposalService:
                 source_mode,
                 normalized.raw_time_expression,
             )
-            existing = await self.db.scalar(
-                select(ActionProposal).where(ActionProposal.idempotency_key == key)
-            )
+            existing = await self.db.scalar(select(ActionProposal).where(ActionProposal.idempotency_key == key))
             if existing is not None:
                 saved.append(existing)
                 continue
@@ -450,9 +550,105 @@ class ActionProposalService:
                 candidate.scheduled_end_time,
                 normalized.scheduled_start_at,
             )
+            if update_latest_appointment and candidate.action_type == "appointment":
+                existing_active = await self._appointment_amendment_target(
+                    conversation_id=conversation_id,
+                    owner_user_id=owner_user_id,
+                    candidate_title=candidate.title,
+                )
+                if existing_active is not None:
+                    # A correction belongs to the newest undecided appointment,
+                    # never to a confirmed calendar entry. Newer explicit fields
+                    # replace older ones, which resolves "9h" then "đổi 10h"
+                    # without creating a second card.
+                    previous_source = await self.db.get(Message, existing_active.source_message_id)
+                    if previous_source is not None and (
+                        previous_source.created_at,
+                        previous_source.id,
+                    ) > (source.created_at, source.id):
+                        # Completion order is not message order. An older LLM
+                        # run finishing last may not undo a newer correction.
+                        saved.append(existing_active)
+                        continue
+                    existing_active.source_message_id = source_message_id
+                    # Corrections such as "move it to 10 PM" often make the
+                    # extractor return a generic title ("Meeting"). Keep the
+                    # established title unless the old row genuinely lacks one.
+                    if not existing_active.title and candidate.title:
+                        existing_active.title = candidate.title
+                    existing_active.details = candidate.details or existing_active.details
+                    existing_active.location = getattr(candidate, "location", None) or existing_active.location
+                    existing_active.raw_time_expression = (
+                        normalized.raw_time_expression or existing_active.raw_time_expression
+                    )
+                    if normalized.scheduled_start_at is not None:
+                        existing_active.scheduled_start_at = normalized.scheduled_start_at
+                        existing_active.scheduled_time = normalized.scheduled_start_at
+                        existing_active.due_at = normalized.scheduled_start_at
+                        existing_active.time_source_message_id = sources.get("time", source_message_id)
+                    if scheduled_end_at is not None:
+                        existing_active.scheduled_end_at = scheduled_end_at
+                    if candidate.details:
+                        existing_active.details_source_message_id = sources.get("details", source_message_id)
+                    if normalized.resolved_timezone is not None:
+                        existing_active.resolved_timezone = normalized.resolved_timezone
+                    # The amendment can mention only one field. Do not turn a
+                    # previously complete note/location back into a missing
+                    # value merely because that field was absent from the new
+                    # short message.
+                    missing = set(_load_missing(existing_active.missing_fields)) | set(missing)
+                    if existing_active.scheduled_start_at is not None:
+                        missing.discard("time")
+                    if existing_active.title:
+                        missing.discard("title")
+                    if existing_active.details:
+                        missing.discard("details")
+                    if existing_active.location:
+                        missing.discard("location")
+                    if existing_active.resolved_timezone:
+                        missing.discard("timezone")
+                    existing_active.missing_fields = _dump_missing(missing)
+                    existing_active.status = "needs_clarification" if missing else "pending_confirmation"
+                    existing_active.updated_at = datetime.now(UTC)
+                    saved.append(existing_active)
+                    continue
+            if candidate.action_type == "appointment" and not update_latest_appointment:
+                # The original request and a rapid follow-up may each have a
+                # worker. Reuse the newer card when it is also the message that
+                # supplied one of the fields this older worker just extracted.
+                source_ids = set(sources.values())
+                active = (
+                    await self.db.scalar(
+                        select(ActionProposal)
+                        .where(
+                            ActionProposal.conversation_id == conversation_id,
+                            ActionProposal.owner_user_id == owner_user_id,
+                            ActionProposal.action_type == "appointment",
+                            ActionProposal.status.in_(_ACTIVE_STATUSES),
+                            ActionProposal.source_message_id.in_(source_ids),
+                        )
+                        .order_by(ActionProposal.updated_at.desc(), ActionProposal.id.desc())
+                        .limit(1)
+                        .with_for_update()
+                    )
+                    if source_ids
+                    else None
+                )
+                if active is not None and active.source_message_id in set(sources.values()):
+                    active_source = await self.db.get(Message, active.source_message_id)
+                    if active_source is not None and (
+                        active_source.created_at,
+                        active_source.id,
+                    ) > (source.created_at, source.id):
+                        saved.append(active)
+                        continue
             proposal = ActionProposal(
                 conversation_id=conversation_id,
                 source_message_id=source_message_id,
+                time_source_message_id=sources.get("time", source_message_id)
+                if normalized.scheduled_start_at is not None
+                else None,
+                details_source_message_id=sources.get("details", source_message_id) if candidate.details else None,
                 owner_user_id=owner_user_id,
                 created_by_user_id=created_by_user_id,
                 source_mode=source_mode,
@@ -480,9 +676,7 @@ class ActionProposalService:
                     await self.db.flush()
                 saved.append(proposal)
             except IntegrityError:
-                existing = await self.db.scalar(
-                    select(ActionProposal).where(ActionProposal.idempotency_key == key)
-                )
+                existing = await self.db.scalar(select(ActionProposal).where(ActionProposal.idempotency_key == key))
                 if existing is None:
                     raise
                 saved.append(existing)
@@ -680,11 +874,7 @@ class ActionProposalService:
         values: dict[str, Any] = {
             "clarification_rounds": proposal.clarification_rounds + 1,
             "missing_fields": _dump_missing(remaining),
-            "clarification_prompt": (
-                None
-                if not remaining
-                else "Please provide the remaining execution details."
-            ),
+            "clarification_prompt": (None if not remaining else "Please provide the remaining execution details."),
             "updated_at": now,
         }
         values["clarification_question"] = values["clarification_prompt"]
@@ -694,9 +884,7 @@ class ActionProposalService:
             values["scheduled_time"] = resolution.scheduled_start_at
         if resolution.resolved_timezone is not None:
             values["resolved_timezone"] = resolution.resolved_timezone
-        values["status"] = (
-            "pending_confirmation" if not remaining else "needs_clarification"
-        )
+        values["status"] = "pending_confirmation" if not remaining else "needs_clarification"
         result = await self.db.execute(
             update(ActionProposal)
             .where(
@@ -717,7 +905,11 @@ class ActionProposalService:
         result = await self.db.execute(
             update(ActionProposal)
             .where(
-                ActionProposal.source_message_id == message_id,
+                or_(
+                    ActionProposal.source_message_id == message_id,
+                    ActionProposal.time_source_message_id == message_id,
+                    ActionProposal.details_source_message_id == message_id,
+                ),
                 ActionProposal.status.in_(_ACTIVE_STATUSES),
             )
             .values(status="stale", stale_at=datetime.now(UTC))

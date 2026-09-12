@@ -128,3 +128,6 @@ ASSISTANT_OUTCOMES = (
     # The run failed. `error_code` says how.
     "error",
 )
+
+
+ASSISTANT_JOB_STATUSES = ("pending", "processing", "completed", "failed")

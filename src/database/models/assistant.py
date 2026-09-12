@@ -29,11 +29,50 @@ from .constants import (
     ACTION_PROPOSAL_TYPES,
     AGENT_CONSENT_SCOPES,
     ASSISTANT_CHUNK_STRATEGIES,
+    ASSISTANT_JOB_STATUSES,
     ASSISTANT_MEMORY_KINDS,
     ASSISTANT_OUTCOMES,
     EMBEDDING_DIM,
     _in_clause,
 )
+
+
+class AssistantJob(Base):
+    """Durable queue entry for one private Assistant turn."""
+
+    __tablename__ = "assistant_jobs"
+    __table_args__ = (
+        CheckConstraint(_in_clause("status", ASSISTANT_JOB_STATUSES), name="ck_assistant_jobs_status"),
+        UniqueConstraint("message_id", name="uq_assistant_jobs_message_id"),
+        Index("ix_assistant_jobs_ready", "status", "available_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    message_id: Mapped[str] = mapped_column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    requester_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    request_text: Mapped[str] = mapped_column(Text, nullable=False)
+    trusted_timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now()
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
 
 class AgentConsent(Base):
@@ -47,7 +86,7 @@ class AgentConsent(Base):
     list will keep growing, which on `UserSettings` would mean repeatedly
     altering a table every request reads.
 
-    Absence of a row means **not granted** â€” the default fails closed, the same
+    Absence of a row means **not granted** — the default fails closed, the same
     way `CorrectionLog.consent_to_share` defaults to false.
     """
 
@@ -103,6 +142,8 @@ class ActionProposal(Base):
         CheckConstraint("clarification_rounds >= 0", name="ck_action_proposals_clarification_rounds"),
         Index("ix_action_proposals_conversation_id", "conversation_id"),
         Index("ix_action_proposals_source_message_id", "source_message_id"),
+        Index("ix_action_proposals_time_source_message_id", "time_source_message_id"),
+        Index("ix_action_proposals_details_source_message_id", "details_source_message_id"),
         Index("ix_action_proposals_owner_status", "owner_user_id", "status"),
         Index("ix_action_proposals_status", "status"),
         UniqueConstraint("idempotency_key", name="uq_action_proposals_idempotency_key"),
@@ -122,6 +163,14 @@ class ActionProposal(Base):
         String(36),
         ForeignKey("messages.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    # Field-level provenance for values completed from nearby messages. These
+    # remain nullable for proposals created before contextual extraction.
+    time_source_message_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
+    )
+    details_source_message_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True
     )
     owner_user_id: Mapped[str] = mapped_column(
         String(36),
@@ -416,7 +465,7 @@ class AssistantAttempt(Base):
     (ADR-16): this is a **measurement log, not application state**. Nothing
     outside `src/services/assistant/assistant_telemetry.py` and
     `scripts/maintenance/report_metrics.py` may read it, and its columns are free to change
-    with what needs measuring â€” no contract depends on them.
+    with what needs measuring — no contract depends on them.
 
     Rows are written at every exit, including `refused`, `clarified` and
     `empty`, which produce no proposal and no answer. Those are the reason the
@@ -434,7 +483,7 @@ class AssistantAttempt(Base):
             name="ck_assistant_attempts_outcome",
         ),
         # Every report groups by time, and most filter by conversation. Ordered
-        # so the common query â€” "the last week, for this thread" â€” is one range
+        # so the common query — "the last week, for this thread" — is one range
         # scan rather than a sort.
         Index("ix_assistant_attempts_created", "created_at"),
         Index("ix_assistant_attempts_conversation", "conversation_id", "created_at"),
@@ -464,9 +513,7 @@ class AssistantAttempt(Base):
     # configuration at report time, because configuration changes and a row
     # describes the run that happened, not the deployment reading it.
     provider: Mapped[str] = mapped_column(String(30), nullable=False, default="", server_default="")
-    model_configured: Mapped[str] = mapped_column(
-        String(100), nullable=False, default="", server_default=""
-    )
+    model_configured: Mapped[str] = mapped_column(String(100), nullable=False, default="", server_default="")
 
     # How many times the planner was asked again. The distribution of this is
     # what says whether MAX_REPLANS is set anywhere near right: all runs at zero
@@ -483,14 +530,14 @@ class AssistantAttempt(Base):
 
     proposals_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # Confirmed **within this run**. A proposal approved later through the REST
-    # endpoint belongs to that request, not this one â€” counting it here would
+    # endpoint belongs to that request, not this one — counting it here would
     # attribute an approval to a run that had already ended (ADR-32).
     proposals_executed: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     memory_lines: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # Of those lines, how many came from retrieval rather than from the recent
     # window. The ratio is what says whether `assistant_chunks` is doing
-    # anything at all â€” zero everywhere means the index is empty and nobody
+    # anything at all — zero everywhere means the index is empty and nobody
     # would otherwise notice (ADR-37).
     memory_recalled: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 

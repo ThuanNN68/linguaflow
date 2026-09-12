@@ -1,7 +1,7 @@
-/* LinguaFlow — hệ token toàn cục.
-   Vật neo: nhãn sản phẩm in trên giấy không tẩy trắng.
-   Ràng buộc cứng: không gradient, không bóng mờ, không animation vô hạn,
-   cỡ chữ trần 26px, bo góc trần 4px, chuyển động trần 160ms. */
+/* LinguaFlow — global design-token system.
+   Visual anchor: product labels printed on unbleached paper.
+   Hard constraints: no gradients, shadows, or infinite animation;
+   26px maximum type, 4px maximum radius, 160ms maximum motion. */
 
 body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)),
 body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *,
@@ -12,18 +12,18 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   padding: 0;
 }
 
-/* ─── Token — bảng light định nghĩa ĐỦ ở :root trần ─────────
-   Không token màu nào được định nghĩa lần đầu trong media query. */
+/* ─── Tokens — the light palette defines every token at the root ─────────
+   No color token is first defined inside a media query. */
 :root {
   color-scheme: light dark;
 
-  /* Bề mặt (§3.1) — nền TỐI HƠN thẻ: bìa kraft lộ ra dưới giấy nhãn */
+  /* Surfaces (§3.1) — darker than cards so the kraft paper shows below labels. */
   --surface-ground: #e8e4da;
   --surface-label: #f5f2e9;
   --surface-insert: #fdfcf9;
   --surface-sunken: #ded9cb;
 
-  /* Mực (§4.1) */
+  /* Ink (§4.1) */
   --ink: #26241f;
   --ink-hover: #3a372f;
   --ink-secondary: #57534a;
@@ -31,11 +31,11 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   --ink-disabled: #a09884;
   --ink-inverse: #f5f2e9;
 
-  /* Kẻ hairline — công cụ phân vùng duy nhất (§3.3) */
+  /* Hairline rules — the only visual division tool (§3.3). */
   --rule: #d9d2c2;
   --rule-strong: #bfb5a0;
 
-  /* Sắc tố có vai (§4.1) */
+  /* Purposeful pigments (§4.1). */
   --indigo: #2d4356;
   --indigo-weak: rgba(45, 67, 86, 0.1);
   --on-indigo: #fdfcf9;
@@ -43,11 +43,11 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   --bengara-weak: rgba(168, 80, 60, 0.09);
   --koke: #4a6741;
 
-  /* Vật liệu (§3.2, §3.3) */
+  /* Materials (§3.2, §3.3). */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)' opacity='0.055'/%3E%3C/svg%3E");
   --shadow-seam: 0 1px 0 rgba(58, 50, 36, 0.05);
 
-  /* Khoảng cách — cơ sở 5px, tỉ lệ ~1,48 (§5.1) */
+  /* Spacing — 5px base, ~1.48 ratio (§5.1). */
   --s-1: 3px;
   --s-2: 5px;
   --s-3: 9px;
@@ -57,7 +57,7 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   --s-7: 46px;
   --s-8: 68px;
 
-  /* Cỡ chữ — trần 26px (§5.2) */
+  /* Typography — 26px maximum (§5.2). */
   --fs-micro: 0.6875rem;
   --fs-label: 0.75rem;
   --fs-small: 0.8125rem;
@@ -66,18 +66,18 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   --fs-title: 1.3125rem;
   --fs-display: 1.625rem;
 
-  /* Bo góc — trần 4px (§5.3) */
+  /* Corners — 4px maximum (§5.3). */
   --r-1: 2px;
   --r-2: 3px;
   --r-3: 4px;
 
-  /* Chuyển động — trần 160ms (§6) */
+  /* Motion — 160ms maximum (§6). */
   --dur-press: 80ms;
   --dur-focus: 100ms;
   --dur-hover: 120ms;
   --dur-fade: 140ms;
 
-  /* Font (§9) — biến --font-be-vietnam / --font-plex-mono do next/font đặt */
+  /* Fonts (§9) — next/font provides --font-be-vietnam and --font-plex-mono. */
   --font-body: var(--font-be-vietnam), "Segoe UI", system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Mono", monospace;
   --font-cjk: "Hiragino Sans", "Yu Gothic", "Meiryo", "Microsoft YaHei",
@@ -85,8 +85,8 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   --font-thai: "Leelawadee UI", "Noto Sans Thai", "Thonburi", sans-serif;
 }
 
-/* Dark theme = giấy dưới đèn bàn, không phải giao diện tối chung.
-   Xám ấm, không một sắc xanh-tím nào. */
+/* The dark theme is paper under a desk lamp, not generic dark UI.
+   Use warm grays only; avoid blue-purple casts. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --surface-ground: #191714;
@@ -116,7 +116,7 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   }
 }
 
-/* Lặp lại y hệt để toggle thắng cả hai chiều */
+/* Repeat these declarations so the explicit toggle wins in either direction. */
 :root[data-theme="dark"] {
   --surface-ground: #191714;
   --surface-label: #221f1a;
@@ -144,7 +144,7 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   --shadow-seam: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
-/* ─── Nền ───────────────────────────────────────────────── */
+/* ─── Background ────────────────────────────────────────── */
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -188,14 +188,14 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   outline: none;
 }
 
-/* Focus ring bắt buộc ở mọi phần tử tương tác (§11).
-   :focus-visible — không phải :focus — để chuột không kéo ring theo. */
+/* Focus rings are required on every interactive element (§11).
+   Use :focus-visible rather than :focus so pointer interactions do not retain a ring. */
 body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) :focus-visible {
   outline: 2px solid var(--indigo);
   outline-offset: 2px;
 }
 
-/* ─── Chữ đa ngữ (§9) ───────────────────────────────────── */
+/* ─── Multilingual typography (§9) ───────────────────────── */
 body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) [lang="ja"],
 body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) [lang="zh"],
 body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) [lang="ko"] {
@@ -212,7 +212,7 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   line-height: 1.75;
 }
 
-/* ─── Thanh cuộn ────────────────────────────────────────── */
+/* ─── Scrollbars ─────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -226,7 +226,7 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   background: var(--rule-strong);
 }
 
-/* ─── Tiện dụng ─────────────────────────────────────────── */
+/* ─── Utilities ──────────────────────────────────────────── */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -239,7 +239,7 @@ body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin
   border: 0;
 }
 
-/* ─── Giảm chuyển động (§6) ─────────────────────────────── */
+/* ─── Reduced motion (§6) ────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *,
   body:not(:has(#linguaflow-app-shell)):not(:has(#auth-app-shell)):not(:has(#admin-app-shell)) *::before,

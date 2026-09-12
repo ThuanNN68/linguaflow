@@ -120,6 +120,7 @@ from src.core.rate_limit import AuthRateLimitMiddleware, limiter
 from src.database import get_db, get_engine
 from src.observability import configure_runtime_telemetry, shutdown_runtime_telemetry
 from src.services.assistant.agent_consent import ConsentRequiredError
+from src.services.assistant.assistant_mentions import recover_assistant_jobs, stop_assistant_jobs
 from src.services.calendar.reminder_scheduler import start_reminder_scheduler
 from src.services.delivery.webhooks import recover_webhook_deliveries, stop_webhook_deliveries
 from src.services.shared.embeddings import preload_local_models
@@ -172,6 +173,9 @@ async def lifespan(app: FastAPI):
     )
     if recovered_voice_messages:
         logger.info("Recovered %s pending voice transcription(s)", recovered_voice_messages)
+    recovered_assistant_jobs = await recover_assistant_jobs(publisher=connection_manager)
+    if recovered_assistant_jobs:
+        logger.info("Recovered %s Assistant job(s)", recovered_assistant_jobs)
     recovered_webhooks = await recover_webhook_deliveries()
     if recovered_webhooks:
         logger.info("Recovered %s pending webhook delivery attempt(s)", recovered_webhooks)
@@ -182,6 +186,7 @@ async def lifespan(app: FastAPI):
 
     if scheduler is not None:
         scheduler.shutdown(wait=False)
+    await stop_assistant_jobs()
     await connection_manager.stop()
     await stop_webhook_deliveries()
     shutdown_runtime_telemetry()

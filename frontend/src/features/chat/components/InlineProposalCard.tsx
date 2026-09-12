@@ -42,6 +42,9 @@ export const InlineProposalCard: React.FC<InlineProposalCardProps> = ({
   const [chosen, setChosen] = useState<ApprovalOptions>(() => approvalOptionsFromProposal(proposal));
   const [draft, setDraft] = useState<ProposalDraft>(() => draftFromProposal(proposal));
   const ready = canApprove(proposal, draft);
+  const approvalHelp = proposal.action_type === "appointment" && !draft.startsAtLocal
+    ? "Chọn ngày và giờ trước khi duyệt"
+    : "Điền nốt thông tin còn thiếu ở trên";
 
   return (
     <div className="mx-auto my-3 w-full max-w-md rounded-2xl border border-violet-200 bg-violet-50/70 p-4 dark:border-violet-400/25 dark:bg-violet-500/10">
@@ -63,7 +66,7 @@ export const InlineProposalCard: React.FC<InlineProposalCardProps> = ({
         <button
           type="button"
           disabled={busy || !ready}
-          title={ready ? undefined : "Điền nốt thông tin còn thiếu ở trên"}
+          title={ready ? undefined : approvalHelp}
           onClick={() => onApprove(proposal, decisionCorrections(proposal, draft, chosen))}
           className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#1D4ED8] disabled:opacity-50"
         >

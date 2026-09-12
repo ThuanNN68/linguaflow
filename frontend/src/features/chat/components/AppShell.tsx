@@ -17,6 +17,7 @@ import {
   blockContact,
   compareConversations,
   createConversation,
+  ChatApiError,
   createCalendarEvent,
   deleteGroup,
   deleteMessage,
@@ -100,7 +101,7 @@ import { ChatView } from "./ChatView";
 import { NewConversationModal } from "./NewConversationModal";
 import { isAwaitingDecision } from "../proposal-approval";
 import { CreateGroupModal } from "./CreateGroupModal";
-import { SettingsModal } from "./SettingsModal";
+import { SettingsModal, type SettingsSection } from "./SettingsModal";
 import { TaskInboxPanel } from "./TaskInboxPanel";
 import { CallModal, type ActiveCall } from "./CallModal";
 import { ToastContainer } from "./ToastContainer";
@@ -207,6 +208,12 @@ export const AppShell: React.FC = () => {
   const router = useRouter();
   const tts = useTTS();
   const socket = useRef<WebSocket | null>(null);
+  // A WebSocket reaches OPEN before the application-level auth handshake has
+  // completed.  Sending in that interval makes the server interpret the first
+  // payload as an invalid authentication event, while the optimistic bubble
+  // remains in the browser only.  Keep this separate from readyState so a
+  // message is never presented as sent until the socket has received auth_ok.
+  const socketAuthenticated = useRef(false);
   const token = useRef<string | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(EMPTY_USER);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_CHAT_SETTINGS);
@@ -230,7 +237,7 @@ export const AppShell: React.FC = () => {
   // both trigger a reload, and a boolean flipped twice reads as unchanged.
   const [calendarRefreshCount, setCalendarRefreshCount] = useState(0);
   const [users, setUsers] = useState<User[]>([]);
-  // null = chưa tìm kiếm, hiển thị danh bạ. Mảng = kết quả tìm kiếm của máy chủ.
+  // null means no search has run, so show contacts. An array contains server search results.
   const [userSearchResults, setUserSearchResults] = useState<User[] | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messagesMap, setMessagesMap] = useState<Record<string, Message[]>>({});
@@ -241,6 +248,7 @@ export const AppShell: React.FC = () => {
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSection>("language");
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
@@ -492,6 +500,7 @@ export const AppShell: React.FC = () => {
     let disposed = false;
     let retry: number | undefined;
     const connect = () => {
+      socketAuthenticated.current = false;
       const ws = new WebSocket(socketUrl());
       socket.current = ws;
       ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token: token.current }));
@@ -503,6 +512,7 @@ export const AppShell: React.FC = () => {
           return;
         }
         if (eventType === "auth_ok") {
+          socketAuthenticated.current = true;
           const conversationId = selectedConversationIdRef.current;
           if (conversationId) {
             void Promise.all([
@@ -519,6 +529,18 @@ export const AppShell: React.FC = () => {
           // Durable REST state is authoritative for lifecycle events that may
           // have completed while this socket was disconnected.
           void refreshConversations();
+        }
+        if (eventType === "assistant_consent_required") {
+          setSettingsInitialSection("ai");
+          setIsSettingsOpen(true);
+          addToast(
+            settings.interfaceLanguage === "vi" ? "Trợ lý cần quyền truy cập" : "Assistant permission required",
+            settings.interfaceLanguage === "vi"
+              ? "Bật “Đọc nội dung hội thoại” để trợ lý có thể trả lời yêu cầu này."
+              : "Enable “Read conversations” so the assistant can answer this request.",
+            "warning",
+          );
+          return;
         }
         if (eventType === "message_created" || eventType === "message_received") {
           const realtime = payload.message as ApiRealtimeMessage;
@@ -574,6 +596,14 @@ export const AppShell: React.FC = () => {
               proposal,
               ...current.filter((item) => item.id !== proposal.id),
             ].slice(0, 50));
+            // The WebSocket event is deliberately small. Reload the durable
+            // rows so field-level context (for example, which message supplied
+            // the time) appears immediately rather than only after a refresh.
+            if (token.current) {
+              void listActionProposals(token.current)
+                .then((proposals) => setIncomingProposals(proposals))
+                .catch(() => undefined);
+            }
             addToast("Trợ lý đề xuất một việc", proposal.title, "info");
           }
         }
@@ -741,7 +771,10 @@ export const AppShell: React.FC = () => {
         }
         if (eventType === "error") addToast("Chat error", payload.message as string, "warning");
       };
-      ws.onclose = () => { if (!disposed) retry = window.setTimeout(connect, 1500); };
+      ws.onclose = () => {
+        socketAuthenticated.current = false;
+        if (!disposed) retry = window.setTimeout(connect, 1500);
+      };
     };
     connect();
     return () => { disposed = true; if (retry) window.clearTimeout(retry); socket.current?.close(); };
@@ -768,12 +801,15 @@ export const AppShell: React.FC = () => {
   };
 
   const send = (text: string, replyToMessageId?: string, mentions: MessageMention[] = [], attachmentId?: string, forwardedFromMessageId?: string, destinationConversationId = selectedConversationId, optimisticAttachment?: MessageAttachment) => {
-    if (!destinationConversationId || socket.current?.readyState !== WebSocket.OPEN) { addToast("Reconnecting", "Your message will send when realtime reconnects.", "warning"); return; }
+    if (!destinationConversationId || socket.current?.readyState !== WebSocket.OPEN || !socketAuthenticated.current) {
+      addToast("Reconnecting", "Your message will send when realtime reconnects.", "warning");
+      return;
+    }
     const clientMessageId = newClientMessageId();
     const repliedMessage = replyToMessageId ? (messagesMap[destinationConversationId] ?? []).find((message) => message.id === replyToMessageId) : undefined;
     const optimistic: Message = { id: clientMessageId, clientMessageId, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar, conversationId: destinationConversationId, content: text, messageType: "text", transcriptionStatus: null, timestamp: "Now", createdAt: new Date().toISOString(), status: "sending", mentions, forwardedFromMessageId, attachments: optimisticAttachment ? [optimisticAttachment] : undefined, replyTo: repliedMessage ? { id: repliedMessage.id, senderName: repliedMessage.senderName || "Message", content: repliedMessage.content } : undefined };
     setMessagesMap((previous) => ({ ...previous, [destinationConversationId]: [...(previous[destinationConversationId] ?? []), optimistic] }));
-    socket.current.send(JSON.stringify({ type: "send_message", client_message_id: clientMessageId, conversation_id: destinationConversationId, text, mentions: mentions.map((mention) => ({ type: mention.type, user_id: mention.userId })), reply_to_message_id: replyToMessageId, attachment_id: attachmentId, forwarded_from_message_id: forwardedFromMessageId }));
+    socket.current.send(JSON.stringify({ type: "send_message", client_message_id: clientMessageId, conversation_id: destinationConversationId, text, mentions: mentions.map((mention) => ({ type: mention.type, user_id: mention.userId })), reply_to_message_id: replyToMessageId, attachment_id: attachmentId, forwarded_from_message_id: forwardedFromMessageId, client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }));
   };
 
   const startConversation = async (user: User) => {
@@ -807,11 +843,12 @@ export const AppShell: React.FC = () => {
     file: File,
     replyToMessageId: string | undefined,
     onStage: (stage: Extract<VoiceRecorderStage, 'uploading' | 'sending'>) => void,
+    destinationConversationId = selectedConversationId,
   ) => {
-    const conversationId = selectedConversationId;
+    const conversationId = destinationConversationId;
     const accessToken = token.current;
     const activeSocket = socket.current;
-    if (!conversationId || !accessToken || !activeSocket) {
+    if (!conversationId || !accessToken || !activeSocket || !socketAuthenticated.current) {
       throw new VoiceRecorderError('voice_send_failed');
     }
 
@@ -1289,7 +1326,7 @@ export const AppShell: React.FC = () => {
 
   return <div id="linguaflow-app-shell" className="flex w-screen h-screen overflow-hidden bg-[#F7F8FC] dark:bg-[#14161C] select-none">
     {settings.offlineModeSimulation && <div className="absolute top-0 inset-x-0 z-50 flex items-center justify-center gap-2 py-1 px-4 bg-amber-500 text-white text-xs font-semibold"><WifiOff className="w-3.5 h-3.5" />You&apos;re offline. Messages will send automatically when you reconnect.</div>}
-    <div className={mobileView === "chat" ? "hidden md:flex" : "flex"}><MiniSidebar activeTab={activeTab} onTabChange={(tab) => { if (tab === "settings") { setIsSettingsOpen(true); return; } setActiveTab(tab); if (tab !== "chats") setIsAssistantChatOpen(false); }} currentUser={currentUser} settings={settings} onOpenSettings={() => setIsSettingsOpen(true)} onToggleTheme={() => setSettings((value) => ({ ...value, theme: value.theme === "dark" ? "light" : "dark" }))} onLogout={handleLogout} isLoggingOut={isLoggingOut} unreadChatsCount={unreadChatsCount} pendingTaskCount={pendingTaskCount} /></div>
+    <div className={mobileView === "chat" ? "hidden md:flex" : "flex"}><MiniSidebar activeTab={activeTab} onTabChange={(tab) => { if (tab === "settings") { setSettingsInitialSection("language"); setIsSettingsOpen(true); return; } setActiveTab(tab); if (tab !== "chats") setIsAssistantChatOpen(false); }} currentUser={currentUser} settings={settings} onOpenSettings={() => { setSettingsInitialSection("language"); setIsSettingsOpen(true); }} onToggleTheme={() => setSettings((value) => ({ ...value, theme: value.theme === "dark" ? "light" : "dark" }))} onLogout={handleLogout} isLoggingOut={isLoggingOut} unreadChatsCount={unreadChatsCount} pendingTaskCount={pendingTaskCount} /></div>
     {(activeTab === "chats" || activeTab === "contacts" || activeTab === "groups") && <div className={`h-screen flex-shrink-0 ${mobileView === "chat" ? "hidden md:flex" : "flex w-full md:w-[340px]"}`}>
       {activeTab === "chats" && <ConversationPanel conversations={conversations} selectedConversationId={selectedConversationId} onSelectConversation={selectConversation} onOpenNewChat={() => setIsNewChatOpen(true)} onMarkAllAsRead={() => conversations.forEach((item) => void markRead(token.current!, item.id))} assistantSelected={isAssistantChatOpen} onOpenAssistant={() => {
         if (!token.current) return;
@@ -1353,7 +1390,9 @@ export const AppShell: React.FC = () => {
         onSendAttachment={(file) => isAssistantChatOpen && activeConversationId
           ? void attach(file, activeConversationId, [{ type: "assistant" }])
           : void attach(file)}
-        onSendVoice={isAssistantChatOpen ? undefined : sendVoice}
+        onSendVoice={isAssistantChatOpen && activeConversationId
+          ? (file, replyToMessageId, onStage) => sendVoice(file, replyToMessageId, onStage, activeConversationId)
+          : sendVoice}
         onTyping={(isTyping) => activeConversationId && socket.current?.readyState === WebSocket.OPEN && socket.current.send(JSON.stringify({ type: "typing", conversation_id: activeConversationId, is_typing: isTyping }))}
         onReact={(messageId, emoji) => { if (!isAssistantChatOpen) void toggleReaction(messageId, emoji); }}
         onCopy={(text) => void navigator.clipboard.writeText(text)}
@@ -1398,6 +1437,11 @@ export const AppShell: React.FC = () => {
         calendarToken={accessToken ?? undefined}
         onCreateAppointment={(task) => {
           if (!token.current) return;
+          // The calendar editor can offer several presentation choices, but the
+          // persisted reminder is the in-app notification. Preserve its chosen
+          // lead time instead of silently falling back to the API's 15-minute
+          // default.
+          const reminder = task.reminders?.find((item) => item.method === "popup");
           void createCalendarEvent(token.current, {
             title: task.title,
             starts_at: task.dueAt,
@@ -1406,6 +1450,7 @@ export const AppShell: React.FC = () => {
             location: task.location ?? null,
             all_day: task.isAllDay ?? false,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            reminder_minutes_before: reminder?.minutes ?? null,
           }).then(() => {
             addToast("Đã tạo nhắc hẹn", "Sự kiện đã được thêm vào lịch của bạn.", "success");
             setCalendarRefreshCount((count) => count + 1);
@@ -1421,6 +1466,11 @@ export const AppShell: React.FC = () => {
                 for (const proposal of created) byId.set(proposal.id, proposal);
                 return [...byId.values()];
               });
+            } else {
+              // The backend stores an assistant-authored empty result. Reload
+              // as a fallback when its realtime event raced this REST response
+              // or the socket was reconnecting.
+              await loadConversationMessages(conversationId);
             }
             addToast(
               created.length ? "Đã tạo đề xuất lịch" : "Không tìm thấy lịch hẹn",
@@ -1429,6 +1479,23 @@ export const AppShell: React.FC = () => {
             );
             return created;
           } catch (error) {
+            if (
+              error instanceof ChatApiError
+              && error.code === "CONSENT_REQUIRED"
+              && error.scope === "read_conversations"
+            ) {
+              setSettingsInitialSection("ai");
+              setIsSettingsOpen(true);
+              const message = settings.interfaceLanguage === "vi"
+                ? "Bật quyền “Đọc nội dung hội thoại” trong Công cụ AI rồi thử lại."
+                : "Enable “Read conversations” in AI Tools and try again.";
+              addToast(
+                settings.interfaceLanguage === "vi" ? "Cần cấp quyền cho trợ lý" : "Assistant permission required",
+                message,
+                "warning",
+              );
+              throw new Error(message);
+            }
             addToast("Không thể quét tin nhắn", error instanceof Error ? error.message : undefined, "warning");
             throw error;
           }
@@ -1465,7 +1532,7 @@ export const AppShell: React.FC = () => {
     </div>
     <NewConversationModal isOpen={isNewChatOpen} onClose={() => { setIsNewChatOpen(false); setUserSearchResults(null); }} onSelectUser={startConversation} onCreateGroupClick={() => setIsCreateGroupOpen(true)} users={users} searchResults={userSearchResults} onSearchUsers={searchUsers} language={settings.interfaceLanguage} />
     <CreateGroupModal isOpen={isCreateGroupOpen} onClose={() => setIsCreateGroupOpen(false)} onCreateGroup={createGroup} users={users} onSearchUsers={searchUsers} language={settings.interfaceLanguage} />
-    <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={settings} onUpdateSettings={handleUpdateSettings} currentUser={currentUser} onUpdateUser={(value) => void saveProfile(value)} agentConsents={agentConsents} agentConsentsAnswered={agentConsentsAnswered} onUpdateAgentConsents={handleUpdateAgentConsents} />
+    <SettingsModal key={settingsInitialSection} isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={settings} onUpdateSettings={handleUpdateSettings} currentUser={currentUser} onUpdateUser={(value) => void saveProfile(value)} agentConsents={agentConsents} agentConsentsAnswered={agentConsentsAnswered} onUpdateAgentConsents={handleUpdateAgentConsents} initialSection={settingsInitialSection} />
     <CallModal
       key={activeCall?.id ?? "no-active-call"}
       call={activeCall}

@@ -70,6 +70,43 @@ async def test_recent_action_scan_limits_scope_to_selected_conversation_human_me
     assert [call.kwargs["message_id"] for call in service.extract_actions_from_message.await_args_list] == ["message-1", "message-2"]
 
 
+@pytest.mark.asyncio
+async def test_recent_action_scan_keeps_other_results_when_one_message_times_out(monkeypatch):
+    """A slow historical message must not fail the entire user-initiated scan."""
+    monkeypatch.setattr(conversation_intelligence_module, "require_consent", AsyncMock())
+
+    class Scalars:
+        def all(self):
+            return ["message-1", "message-2"]
+
+    class Db:
+        async def get(self, _model, identifier):
+            return SimpleNamespace(id=identifier) if identifier == "conversation-1" else None
+
+        async def scalar(self, _statement):
+            return "user-1"
+
+        async def scalars(self, _statement):
+            return Scalars()
+
+    service = ConversationIntelligenceService()
+    service.extract_actions_from_message = AsyncMock(
+        side_effect=[
+            ["proposal-1"],
+            IntelligenceError(IntelligenceErrorCode.TIMEOUT, "Timed out", operation="extract_actions"),
+        ]
+    )
+
+    result = await service.extract_actions_from_recent_messages(
+        conversation_id="conversation-1",
+        user_id="user-1",
+        days=7,
+        db=Db(),
+    )
+
+    assert result == ["proposal-1"]
+
+
 def test_clean_json_text_pure_json():
     raw = '{"title": "Test", "count": 5, "tags": ["a", "b"]}'
     assert clean_json_text(raw) == raw

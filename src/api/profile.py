@@ -241,9 +241,9 @@ async def find_users(
     # whole table — exactly what prefix matching is here to prevent.
     needle = q.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     prefix = f"{needle}%"
-    # A display name is several words, and people search for the one they know:
-    # "An" must find "Nguyễn An". Any word may start the match, but no match
-    # starts inside a word, so the walk-the-table problem above stays closed.
+    # A display name can contain several words, and people search for the one
+    # they know. Any word may start the match, but no match starts inside a word,
+    # so the walk-the-table problem above stays closed.
     word_prefix = f"% {needle}%"
     users = await db.scalars(
         select(User)

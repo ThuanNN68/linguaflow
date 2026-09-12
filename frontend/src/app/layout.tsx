@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import { Be_Vietnam_Pro, IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-/* Be Vietnam Pro thay Inter: dấu thanh tiếng Việt không chồng lên chữ hoa
-   (Ậ, Ỗ, Ừ), hẹp hơn nên chịu được mật độ, và không phải chữ ký của giao
-   diện sinh tự động. Cả hai đều là font tĩnh nên phải khai báo weight. */
+/* Be Vietnam Pro replaces Inter: Vietnamese tone marks do not collide with
+   uppercase glyphs (Ậ, Ỗ, Ừ), its narrower shape supports this density, and it
+   avoids the signature look of generated interfaces. Both fonts are static, so
+   every required weight must be declared. */
 const beVietnam = Be_Vietnam_Pro({
   subsets: ["latin", "latin-ext", "vietnamese"],
   weight: ["400", "500", "600"],

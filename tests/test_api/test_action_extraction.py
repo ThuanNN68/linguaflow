@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.security import create_access_token, get_password_hash
 from src.database.models import ActionProposal, Conversation, ConversationMember, Message, User
 from src.services.assistant.agent_consent import set_consents
+from src.services.intelligence.conversation_intelligence import ConversationIntelligenceService
 
 
 @pytest_asyncio.fixture
@@ -213,6 +214,49 @@ async def test_extract_actions_non_actionable_returns_empty(client: AsyncClient,
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_recent_empty_scan_posts_a_private_durable_assistant_notice(
+    client: AsyncClient,
+    test_db: AsyncSession,
+    extraction_setup,
+    monkeypatch,
+):
+    alice = extraction_setup["alice"]
+    conversation = extraction_setup["conv"]
+    alice_id = alice.id
+    conversation_id = conversation.id
+    alice.interface_language = "vi"
+    await test_db.commit()
+
+    async def no_actions(self, conversation_id, user_id, days, db, hours=None):
+        return []
+
+    monkeypatch.setattr(
+        ConversationIntelligenceService,
+        "extract_actions_from_recent_messages",
+        no_actions,
+    )
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/extract-actions/recent?days=7",
+        headers={"Authorization": f"Bearer {create_access_token(subject=alice_id)}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+    test_db.expire_all()
+    notice = await test_db.scalar(
+        select(Message).where(
+            Message.conversation_id == conversation_id,
+            Message.client_message_id.like("assistant:appointment-scan-empty:%"),
+        )
+    )
+    assert notice is not None
+    assert notice.assistant_generated is True
+    assert notice.visibility == "private"
+    assert notice.visible_to_user_id == alice_id
+    assert "không tìm thấy lịch hẹn hoặc cuộc họp" in notice.original_text
 
 
 @pytest.mark.asyncio

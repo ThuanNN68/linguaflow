@@ -314,7 +314,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               ) : showTranslatedAsPrimary ? (
                 <div className="flex items-start justify-between gap-2">
                   <p className="whitespace-pre-wrap break-words font-normal flex-1">{message.translation?.editedText || message.translation?.translatedText}</p>
-                  {onSpeak && (
+                  {isVoice && message.transcriptionStatus === 'completed' && onSpeak && (
                     <button
                       type="button"
                       aria-label="Speak text"
@@ -329,7 +329,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               ) : (
                 <div className="flex items-start justify-between gap-2">
                   <p className="whitespace-pre-wrap break-words font-normal flex-1">{renderMessageContent(message.content)}</p>
-                  {onSpeak && (
+                  {isVoice && message.transcriptionStatus === 'completed' && onSpeak && (
                     <button
                       type="button"
                       aria-label="Speak text"

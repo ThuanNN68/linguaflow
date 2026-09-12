@@ -45,24 +45,24 @@ export interface CalendarTask {
   title: string;
   kind: EventKind;
 
-  // ── RÀNG BUỘC: MỖI LỊCH CHỈ TRONG 1 NGÀY ──
+  // ── INVARIANT: EVERY CALENDAR ITEM STAYS WITHIN ONE DAY ──
   date: string;               // "YYYY-MM-DD" e.g. "2026-08-27"
-  isAllDay?: boolean;         // True nếu cả ngày
+  isAllDay?: boolean;         // True for an all-day item
   startTime?: string;         // "HH:mm" e.g. "09:00"
-  endTime?: string;           // "HH:mm" e.g. "10:30" (trong cùng ngày)
-  duration: number;           // Số phút trong ngày
+  endTime?: string;           // "HH:mm" e.g. "10:30" (on the same day)
+  duration: number;           // Minutes within the day
 
-  // ISO timestamps cho grid & sorting
+  // ISO timestamps for grid rendering and sorting
   dueAt: string;              // ISO start string
   endAt?: string;             // ISO end string
 
-  // ── CÁC TRƯỜNG CƠ BẢN ──
+  // ── CORE FIELDS ──
   colorId?: string;           // Key in CALENDAR_PALETTE
   recurrence?: RecurrenceFreq;
-  location?: string;          // Địa điểm / Phòng họp
-  attendees?: Attendee[];     // Người tham gia
-  reminders?: EventReminder[];// Thông báo
-  note?: string;              // Ghi chú / Mô tả
+  location?: string;          // Location or meeting room
+  attendees?: Attendee[];     // Attendees
+  reminders?: EventReminder[];// Notifications
+  note?: string;              // Notes or description
 
   status: TaskStatus;
   source: TaskSource;
@@ -145,7 +145,7 @@ const HOUR_HEIGHT = 64;
 const DEFAULT_START_HOUR = 7;
 const DEFAULT_END_HOUR = 22;
 
-/* ────────────────────────── CUSTOM CHECKBOX (MÀU TRẮNG KHI CHƯA TÍCH) ────────────────────────── */
+/* ────────────────────────── CUSTOM CHECKBOX (WHITE WHEN UNCHECKED) ────────────────────────── */
 const CustomCheckbox: React.FC<{
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -282,7 +282,7 @@ function matchesRecurrence(task: CalendarTask, targetDay: Date): boolean {
   if (task.recurrence === "daily") return true;
   if (task.recurrence === "workdays") {
     const dayOfWeek = curDay.getDay();
-    return dayOfWeek >= 1 && dayOfWeek <= 5; // Thứ 2 đến Thứ 6
+    return dayOfWeek >= 1 && dayOfWeek <= 5; // Monday through Friday
   }
   if (task.recurrence === "weekly") {
     return curDay.getDay() === startDay.getDay();
@@ -342,9 +342,9 @@ interface DetailPopoverAnchor {
 }
 
 /**
- * Thuật toán sắp xếp sự kiện trùng giờ:
- * - Nhóm các sự kiện giao thoa/trùng thời gian thành từng cụm (clusters)
- * - Xếp song song các cột con (sub-columns) cạnh nhau để không bị che khuất
+ * Overlapping-event layout algorithm:
+ * - Group intersecting events into clusters.
+ * - Place sub-columns side by side so no event is obscured.
  */
 function layoutDay(tasks: CalendarTask[], startHour: number): PositionedTask[] {
   const timed = tasks
@@ -358,7 +358,7 @@ function layoutDay(tasks: CalendarTask[], startHour: number): PositionedTask[] {
 
   if (timed.length === 0) return [];
 
-  // Gom các sự kiện trùng / giao thoa thành các cụm
+  // Group overlapping or intersecting events into clusters.
   const clusters: CalendarTask[][] = [];
   let currentCluster: CalendarTask[] = [];
   let clusterEnd = -1;
@@ -369,7 +369,7 @@ function layoutDay(tasks: CalendarTask[], startHour: number): PositionedTask[] {
       currentCluster.push(task);
       clusterEnd = end;
     } else if (start < clusterEnd) {
-      // Có trùng / chạm khung giờ với cụm hiện tại
+      // This event overlaps or touches the current cluster.
       currentCluster.push(task);
       clusterEnd = Math.max(clusterEnd, end);
     } else {
@@ -386,7 +386,7 @@ function layoutDay(tasks: CalendarTask[], startHour: number): PositionedTask[] {
   const offset = startHour * 60;
 
   for (const cluster of clusters) {
-    // Phân bổ cột con bằng Greedy Interval Coloring
+    // Allocate sub-columns with greedy interval coloring.
     const columns: CalendarTask[][] = [];
     const taskColMap = new Map<string, number>();
 
@@ -460,7 +460,7 @@ const defaultTasks = (): CalendarTask[] => {
       duration: 30,
       dueAt: buildSingleDayIso(t0, "09:00"),
       endAt: buildSingleDayIso(t0, "09:30"),
-      recurrence: "workdays", // Thứ 2 đến Thứ 6
+      recurrence: "workdays", // Monday through Friday
       colorId: "sage",
       category: "meeting",
       location: "Phòng họp dự án",
@@ -480,7 +480,7 @@ const defaultTasks = (): CalendarTask[] => {
       date: t0,
       isAllDay: false,
       startTime: "09:00",
-      endTime: "10:00", // Trùng khung giờ 9:00 - 9:30 với họp Stand-up để hiển thị song song!
+      endTime: "10:00", // Overlaps the 09:00–09:30 stand-up so both render side by side.
       duration: 60,
       dueAt: buildSingleDayIso(t0, "09:00"),
       endAt: buildSingleDayIso(t0, "10:00"),
@@ -498,7 +498,7 @@ const defaultTasks = (): CalendarTask[] => {
       date: t0,
       isAllDay: false,
       startTime: "09:45",
-      endTime: "11:15", // Trùng khung giờ 9:45 - 10:00 với task kiểm tra khẩn cấp
+      endTime: "11:15", // Overlaps the 09:45–10:00 urgent review task.
       duration: 90,
       dueAt: buildSingleDayIso(t0, "09:45"),
       endAt: buildSingleDayIso(t0, "11:15"),
@@ -565,7 +565,7 @@ const defaultTasks = (): CalendarTask[] => {
 function recurrenceLabel(rec?: RecurrenceFreq) {
   if (!rec || rec === "none") return "Không lặp lại";
   if (rec === "daily") return "Hằng ngày";
-  if (rec === "workdays") return "Thứ 2 đến Thứ 6"; // Đã bỏ "Ngày làm việc"
+  if (rec === "workdays") return "Thứ 2 đến Thứ 6"; // Use an explicit weekday range instead of a generic workday label.
   if (rec === "weekly") return "Hằng tuần vào ngày này";
   if (rec === "monthly") return "Hằng tháng vào ngày này";
   if (rec === "yearly") return "Hằng năm vào ngày này";
@@ -621,7 +621,7 @@ export const PersonalCalendar: React.FC<PersonalCalendarProps> = ({
     task: true,
   });
 
-  // Kéo chọn khung giờ trực tiếp trên lịch
+  // Drag directly on the calendar to select a time range.
   const [dragSelection, setDragSelection] = useState<DragTimeSelection | null>(null);
 
   const createMenuRef = useRef<HTMLDivElement | null>(null);
@@ -682,7 +682,7 @@ export const PersonalCalendar: React.FC<PersonalCalendarProps> = ({
       const start = Math.min(dragSelection.startMin, dragSelection.currentMin);
       let end = Math.max(dragSelection.startMin, dragSelection.currentMin);
 
-      // Nếu người dùng chỉ click hoặc kéo < 15 phút, tự động tạo khung 1 giờ
+      // A click or drag shorter than 15 minutes creates a one-hour range.
       if (end - start < 15) {
         end = Math.min(1440, start + 60);
       }
@@ -847,9 +847,9 @@ export const PersonalCalendar: React.FC<PersonalCalendarProps> = ({
     setDragSelection(null);
   }, []);
 
-  // Xử lý khi bắt đầu kéo chuột trên cột ngày để chọn khung giờ linh hoạt
+  // Start a flexible time-range drag on a day column.
   const handleStartDragTime = useCallback((dateStr: string, e: React.MouseEvent<HTMLDivElement>) => {
-    // Không kích hoạt kéo nếu click trúng sự kiện đã có
+    // Do not start a range drag when an existing event was clicked.
     if ((e.target as HTMLElement).closest("button[data-task-block]")) return;
 
     const columnEl = e.currentTarget;
@@ -1023,7 +1023,7 @@ export const PersonalCalendar: React.FC<PersonalCalendarProps> = ({
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* ── LEFT SIDEBAR ── */}
           <aside className="hidden w-[260px] shrink-0 flex-col border-r border-[#DADCE0] bg-white dark:border-[#36373A] dark:bg-[#1E1F20] lg:flex">
-            {/* Nút "+ Tạo" */}
+            {/* Create button */}
             <div className="p-4" ref={createMenuRef}>
               <div className="relative">
                 <button
@@ -1080,7 +1080,7 @@ export const PersonalCalendar: React.FC<PersonalCalendarProps> = ({
               />
             </div>
 
-            {/* "Lịch của tôi" Filter (Ô tích chọn màu trắng khi chưa tích) */}
+            {/* My calendars filter (white checkbox while unchecked) */}
             <div className="flex-1 overflow-y-auto px-4 py-2 text-xs">
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-semibold text-[#444746] dark:text-[#C4C7C5] tracking-wide uppercase text-[11px]">
@@ -1435,7 +1435,7 @@ const WeekGrid: React.FC<GridProps & { days: Date[]; onOpenDay: (day: Date) => v
           })}
         </div>
 
-        {/* Hàng Cả ngày (nếu có sự kiện cả ngày) */}
+        {/* All-day row, when all-day events exist */}
         {hasAllDay && (
           <div className="grid grid-cols-[56px_repeat(7,minmax(100px,1fr))] border-t border-[#DADCE0] dark:border-[#36373A]">
             <div className="flex items-start justify-end border-r border-[#DADCE0] px-2 py-1.5 text-[10px] font-medium text-[#70757A] dark:border-[#36373A]">
@@ -1468,7 +1468,7 @@ const WeekGrid: React.FC<GridProps & { days: Date[]; onOpenDay: (day: Date) => v
           ))}
         </div>
 
-        {/* 7 Day Columns với hỗ trợ kéo chọn khung giờ linh hoạt */}
+        {/* Seven day columns with flexible time-range dragging */}
         {columns.map(({ day, dateStr, timed }) => {
           const hasDraftSelection = dragSelection?.dateStr === dateStr;
           const dragStart = hasDraftSelection ? Math.min(dragSelection.startMin, dragSelection.currentMin) : 0;
@@ -1494,7 +1494,7 @@ const WeekGrid: React.FC<GridProps & { days: Date[]; onOpenDay: (day: Date) => v
                 </div>
               ))}
 
-              {/* Riêng lúc kéo thả trong khung Tuần: Vẫn hiển thị thời gian bắt đầu – kết thúc, bỏ chữ Chưa có tiêu đề */}
+              {/* While dragging in week view, show the start and end times without an untitled label. */}
               {hasDraftSelection && (
                 <div
                   style={{ top: dragTop, height: dragHeight }}
@@ -1509,7 +1509,7 @@ const WeekGrid: React.FC<GridProps & { days: Date[]; onOpenDay: (day: Date) => v
                 </div>
               )}
 
-              {/* Các sự kiện/việc cần làm trong tuần: hiển thị tiêu đề và thời gian đầu – kết thúc */}
+              {/* Weekly events and tasks: show the title and start/end time. */}
               {timed.map((item) => (
                 <TimedEventBlock
                   key={`${item.task.id}-${day.getDate()}`}
@@ -1594,7 +1594,7 @@ const DayGrid: React.FC<GridProps & { day: Date }> = ({
           )}
         </div>
 
-        {/* 24h Time Grid với kéo chọn linh hoạt */}
+        {/* 24-hour time grid with flexible dragging */}
         <div className="grid grid-cols-[56px_minmax(0,1fr)]">
           <div className="border-r border-[#DADCE0] bg-white select-none dark:border-[#36373A] dark:bg-[#1E1F20]">
             {hours.map((hour) => (
@@ -1621,7 +1621,7 @@ const DayGrid: React.FC<GridProps & { day: Date }> = ({
               </div>
             ))}
 
-            {/* Khung xem trước kéo chọn giờ: Hiển thị đầy đủ chi tiết */}
+            {/* Time-range drag preview with complete details */}
             {hasDraftSelection && (
               <div
                 style={{ top: dragTop, height: dragHeight }}
@@ -1646,7 +1646,7 @@ const DayGrid: React.FC<GridProps & { day: Date }> = ({
               </div>
             )}
 
-            {/* Sự kiện (Tự động dàn đều song song khi trùng giờ) */}
+            {/* Events are automatically laid out side by side when they overlap. */}
             {timed.map((item) => (
               <TimedEventBlock key={item.task.id} item={item} onSelect={onSelect} />
             ))}
@@ -2022,7 +2022,7 @@ const TimedEventBlock: React.FC<{
       }`}
     >
       {isShort ? (
-        /* Sự kiện ngắn (15 - 30p): Tiêu đề và giờ trên cùng 1 dòng liền mạch */
+        /* Short events (15–30 minutes): title and time share one continuous line. */
         <div className="flex h-full items-center gap-1 overflow-hidden text-[10px] sm:text-[11px] leading-none">
           {isTask && <CheckCircle2 className="h-3 w-3 shrink-0 opacity-90" />}
           <span className="shrink-0 font-medium tracking-tight opacity-95">
@@ -2034,7 +2034,7 @@ const TimedEventBlock: React.FC<{
           </span>
         </div>
       ) : (
-        /* Sự kiện từ 45p trở lên: Hàng 1 Tiêu đề, Hàng 2 Thời gian đầu – đến trên cùng 1 hàng */
+        /* Events lasting 45 minutes or longer: title first, then start/end time on the second line. */
         <div className="flex h-full flex-col justify-start gap-0.5 overflow-hidden">
           <div className="flex items-center gap-1 leading-tight">
             {isTask && <CheckCircle2 className="h-3 w-3 shrink-0 opacity-90" />}
@@ -2160,7 +2160,7 @@ const QuickCreatePopover: React.FC<{
           className="w-full border-0 border-b-2 border-[#1A73E8] bg-transparent px-0 py-1.5 text-base font-medium text-[#1F1F1F] outline-none placeholder:text-[#9AA0A6] dark:text-[#E3E3E3]"
         />
 
-        {/* 2 Lựa chọn: Sự kiện & Việc cần làm */}
+        {/* Two choices: event and task */}
         <div className="flex gap-1 rounded-xl bg-[#F1F3F4] p-1 dark:bg-[#2D2E30]">
           <button
             type="button"
@@ -2192,7 +2192,7 @@ const QuickCreatePopover: React.FC<{
           </button>
         </div>
 
-        {/* Single-Day Info Badge & Cả ngày Checkbox */}
+        {/* Single-day information badge and all-day checkbox */}
         <div className="flex items-center justify-between gap-2 rounded-xl bg-[#F8FAFD] p-2.5 text-xs text-[#3C4043] dark:bg-[#1E1F20] dark:text-[#C4C7C5]">
           <div className="flex items-center gap-2 min-w-0">
             <Clock3 className="h-4 w-4 text-[#1A73E8] shrink-0" />
@@ -2208,7 +2208,7 @@ const QuickCreatePopover: React.FC<{
           </label>
         </div>
 
-        {/* Địa điểm (cho Sự kiện). */}
+        {/* Location, for events */}
         {kind === "event" && (
           <div className="flex items-center gap-2 rounded-xl border border-[#DADCE0] bg-white px-2.5 py-1.5 text-xs dark:border-[#5F6368] dark:bg-[#2D2E30]">
             <MapPin className="h-3.5 w-3.5 text-[#70757A] shrink-0" />
@@ -2307,13 +2307,13 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
   const [title, setTitle] = useState(initialTask?.title ?? initialTitle);
   const [timeChanged, setTimeChanged] = useState(false);
 
-  // ── RÀNG BUỘC: 1 NGÀY DUY NHẤT VỚI LỰA CHỌN CẢ NGÀY ──
+  // ── INVARIANT: ONE DAY ONLY, INCLUDING ALL-DAY SELECTIONS ──
   const [date, setDate] = useState<string>(
     initialTask?.date || (initialTask?.dueAt ? toDateString(new Date(initialTask.dueAt)) : initialDate)
   );
   const [isAllDay, setIsAllDay] = useState<boolean>(initialTask?.isAllDay ?? initialIsAllDay);
 
-  // Giờ bắt đầu & Giờ kết thúc
+  // Start and end times
   const [startTime, setStartTime] = useState<string>(
     initialTask?.startTime || (initialTask?.dueAt ? toTimeString(new Date(initialTask.dueAt)) : initialStartTime)
   );
@@ -2323,13 +2323,13 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
     return ensureEndTimeAfterStart(start, end);
   });
 
-  // Lặp lại (Đã sửa: "Thứ 2 đến Thứ 6")
+  // Recurrence (Monday through Friday)
   const [recurrence, setRecurrence] = useState<RecurrenceFreq>(initialTask?.recurrence ?? "none");
 
-  // Địa điểm (chỉ dùng cho Sự kiện)
+  // Location, used only for events
   const [location, setLocation] = useState(initialTask?.location ?? initialLocation);
 
-  // Người tham gia
+  // Attendees
   const [attendees, setAttendees] = useState<Attendee[]>(initialTask?.attendees ?? []);
   const [guestEmail, setGuestEmail] = useState("");
   const [guestError, setGuestError] = useState("");
@@ -2341,13 +2341,13 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
   const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   const [groupError, setGroupError] = useState("");
 
-  // Màu sắc cho sự kiện
+  // Event color
   const [colorId, setColorId] = useState<string>(
     initialTask?.colorId ?? initialColorId ?? (kind === "task" ? "peacock" : "sage")
   );
   const [showColorPalette, setShowColorPalette] = useState(false);
 
-  // Nhắc nhở (Thông báo)
+  // Reminder notifications
   const [reminders, setReminders] = useState<EventReminder[]>(
     initialTask?.reminders && initialTask.reminders.length > 0
       ? initialTask.reminders
@@ -2366,14 +2366,14 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
     ),
   );
 
-  // Ghi chú / Mô tả
+  // Notes or description
   const [note, setNote] = useState(initialTask?.note ?? initialNote);
 
   useEffect(() => {
     onDraftChange?.({ date, startTime, endTime, isAllDay });
   }, [date, endTime, isAllDay, onDraftChange, startTime]);
 
-  // Tính thời lượng
+  // Calculate the duration
   const calculatedDuration = useMemo(() => {
     if (isAllDay) return 1440;
     const startMins = timeToMinutes(startTime);
@@ -2381,7 +2381,7 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
     return Math.max(15, endMins - startMins);
   }, [isAllDay, startTime, endTime]);
 
-  // Điều chỉnh giờ kết thúc tự động khi đổi giờ bắt đầu
+  // Automatically adjust the end time when the start time changes
   const handleStartTimeChange = (newStart: string) => {
     setTimeChanged(true);
     setStartTime(newStart);
@@ -2596,7 +2596,7 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
           </button>
         </div>}
 
-        {/* Tiêu đề */}
+        {/* Title */}
         <div>
           <input
             autoFocus
@@ -2608,7 +2608,7 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
           />
         </div>
 
-        {/* ── THỜI GIAN: 1 NGÀY VỚI LỰA CHỌN CẢ NGÀY HOẶC THEO GIỜ ── */}
+        {/* ── TIME: ONE DAY, EITHER ALL-DAY OR TIME-BASED ── */}
         <div className="space-y-4 rounded-2xl border border-[#DADCE0] bg-[#F8FAFD] p-4 dark:border-[#36373A] dark:bg-[#1E1F20]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -2617,7 +2617,7 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
                 Thời gian
               </span>
             </div>
-            {/* Checkbox Cả ngày (Màu trắng khi chưa tích) */}
+            {/* All-day checkbox (white while unchecked) */}
             <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[#1F1F1F] dark:text-[#E3E3E3]">
               <CustomCheckbox checked={isAllDay} onChange={(checked) => { setIsAllDay(checked); setTimeChanged(true); }} />
               <span>Cả ngày</span>
@@ -2680,10 +2680,10 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
           </div>
         </div>
 
-        {/* ── NẾU LÀ SỰ KIỆN: ĐỊA ĐIỂM, KHÁCH MỜI ── */}
+        {/* ── EVENT-ONLY FIELDS: LOCATION AND GUESTS ── */}
         {kind === "event" && (
           <>
-            {/* Địa điểm */}
+            {/* Location */}
             <div>
               <label className="block text-xs font-medium text-[#3C4043] dark:text-[#C4C7C5] mb-1">
                 <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#1A73E8]" />Địa điểm</span>
@@ -2696,7 +2696,7 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
               />
             </div>
 
-            {/* Khách mời */}
+            {/* Guests */}
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-3">
                 <label className="text-xs font-medium text-[#3C4043] dark:text-[#C4C7C5]">
@@ -2849,7 +2849,7 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
           )}
         </div>
 
-        {/* ── THÔNG BÁO NHẮC LỊCH ── */}
+        {/* ── REMINDER NOTIFICATIONS ── */}
         <div className="space-y-2">
           <span className="flex items-center gap-1 text-xs font-medium text-[#3C4043] dark:text-[#C4C7C5]"><Bell className="h-3.5 w-3.5 text-[#1A73E8]" />Thông báo nhắc lịch</span>
           {reminders.map((reminder) => {
@@ -2897,7 +2897,7 @@ export const FullEventModal: React.FC<FullEventModalProps> = ({
           <button type="button" onClick={addReminder} className="text-xs font-medium text-[#1A73E8] hover:underline dark:text-[#A8C7FA]">+ Thêm thông báo</button>
         </div>
 
-        {/* ── GHI CHÚ / MÔ TẢ ── */}
+        {/* ── NOTES / DESCRIPTION ── */}
         <div>
           <label className="block text-xs font-medium text-[#3C4043] dark:text-[#C4C7C5] mb-1">
             <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5 text-[#1A73E8]" />{kind === "task" ? "Chi tiết việc cần làm" : "Mô tả sự kiện"}</span>

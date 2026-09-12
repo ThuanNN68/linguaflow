@@ -15,6 +15,8 @@ from __future__ import annotations
 import pytest
 
 from src.core.security import create_access_token
+from src.services.assistant.agent_consent import set_consents
+from src.services.messaging.chat import ChatService
 
 
 def authenticate(websocket, user):
@@ -153,4 +155,87 @@ async def test_does_not_schedule_when_the_message_is_rejected(
         )
         assert websocket.receive_json()["type"] == "error"
 
+    assert recorded_schedule == []
+
+
+@pytest.mark.asyncio
+async def test_assistant_request_without_consent_is_acknowledged_but_not_translated(
+    ws_client,
+    test_user,
+    conversation_factory,
+    recorded_schedule,
+):
+    client, _manager = ws_client
+    conversation = await conversation_factory(
+        test_user,
+        [test_user],
+        conversation_type="group",
+        title="LinguaFlow Assistant",
+    )
+
+    with client.websocket_connect("/api/v1/ws") as websocket:
+        assert authenticate(websocket, test_user)["type"] == "auth_ok"
+        websocket.send_json(
+            {
+                "type": "send_message",
+                "client_message_id": "assistant-no-consent-1",
+                "conversation_id": conversation.id,
+                "text": "Can you help me plan tomorrow?",
+                "mentions": [{"type": "assistant"}],
+            }
+        )
+        assert websocket.receive_json()["type"] == "message_created"
+        consent_event = websocket.receive_json()
+
+    assert consent_event == {
+        "type": "assistant_consent_required",
+        "client_message_id": "assistant-no-consent-1",
+        "conversation_id": conversation.id,
+        "scope": "read_conversations",
+        "message": "Allow the assistant to read conversations before asking it to respond.",
+    }
+    assert recorded_schedule == []
+
+
+@pytest.mark.asyncio
+async def test_assistant_request_with_consent_returns_reply_without_translation(
+    ws_client,
+    test_db,
+    test_user,
+    conversation_factory,
+    recorded_schedule,
+    monkeypatch,
+):
+    await set_consents(test_db, test_user.id, {"read_conversations": True})
+    conversation = await conversation_factory(
+        test_user,
+        [test_user],
+        conversation_type="group",
+        title="LinguaFlow Assistant",
+    )
+
+    async def canned_reply(self, trigger_message):
+        return "I can help with that."
+
+    monkeypatch.setattr(ChatService, "_assistant_reply_text", canned_reply)
+    monkeypatch.setattr("src.api.websocket.schedule_assistant_mention", lambda **kwargs: None)
+    client, _manager = ws_client
+
+    with client.websocket_connect("/api/v1/ws") as websocket:
+        authenticate(websocket, test_user)
+        websocket.send_json(
+            {
+                "type": "send_message",
+                "client_message_id": "assistant-with-consent-1",
+                "conversation_id": conversation.id,
+                "text": "Can you help me plan tomorrow?",
+                "mentions": [{"type": "assistant"}],
+            }
+        )
+        assert websocket.receive_json()["type"] == "message_created"
+        reply = websocket.receive_json()
+
+    assert reply["type"] == "message_received"
+    assert reply["message"]["assistant_generated"] is True
+    assert reply["message"]["original_text"] == "I can help with that."
     assert recorded_schedule == []

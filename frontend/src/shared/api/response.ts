@@ -1,4 +1,7 @@
 export interface ApiErrorBody {
+  code?: string;
+  message?: string;
+  scope?: string;
   detail?: string | Array<{ msg?: string }>;
 }
 

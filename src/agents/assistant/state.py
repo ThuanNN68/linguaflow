@@ -66,7 +66,7 @@ class AssistantState(TypedDict, total=False):
     conversation_id: str
     user_id: str
     request_text: str
-    # IANA name from the client. Needed before a relative time like "sáng mai"
+    # IANA name from the client. Needed before resolving a relative time like "tomorrow morning".
     # can be resolved at all, and never guessed: `normalize_action_time` refuses
     # rather than inventing an offset.
     timezone: str | None

@@ -9,7 +9,7 @@ interface NewConversationModalProps {
   onSelectUser: (user: User) => void;
   onCreateGroupClick: () => void;
   users: User[];
-  /** Máy chủ trả về cho truy vấn hiện tại; null nghĩa là chưa tìm kiếm. */
+  /** The server result for the current query; null means no search has run yet. */
   searchResults: User[] | null;
   onSearchUsers: (query: string) => void;
   language: LanguageCode;
@@ -29,9 +29,9 @@ export const NewConversationModal: React.FC<NewConversationModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Khi máy chủ đã trả kết quả thì hiển thị đúng kết quả đó, không lọc lại ở
-  // máy khách: máy chủ có thể khớp trên trường mà bộ lọc dưới đây không đọc
-  // (email chẳng hạn), và lọc thêm một lần nữa sẽ giấu mất người vừa tìm thấy.
+  // Once the server returns results, render them exactly as returned instead of
+  // filtering them again on the client. The server can match fields this local
+  // filter does not read (such as email), and a second pass could hide a match.
   const filteredUsers = searchResults ?? users.filter(
     (u) =>
       u.name.toLowerCase().includes(search.toLowerCase()) ||

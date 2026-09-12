@@ -445,29 +445,35 @@ async def list_conversations(
     manager: ConnectionManager = Depends(get_connection_manager),
 ) -> list[ConversationResponse]:
     """List conversations that contain the authenticated user."""
+    # `get_or_create_user_settings` may commit when it creates the first row.
+    # Keep request identity and display settings as plain values before any
+    # operation that can alter ORM expiration state; accessing an expired async
+    # attribute later would attempt implicit I/O and raise MissingGreenlet.
+    user_id = current_user.id
+    reader_language = current_user.preferred_language
     service = ChatService(db)
-    conversations = await service.list_conversations(user_id=current_user.id)
+    conversations = await service.list_conversations(user_id=user_id)
     conversation_ids = [conversation.id for conversation in conversations]
-    settings = await get_or_create_user_settings(db, current_user.id)
+    settings = await get_or_create_user_settings(db, user_id)
     profiles = await resolve_profiles_for_conversations(db, conversation_ids)
     last_messages = await service.get_last_messages(
         conversation_ids=conversation_ids,
-        reader_language=current_user.preferred_language,
-        reader_id=current_user.id,
+        reader_language=reader_language,
+        reader_id=user_id,
         # The caller's own standing per conversation, so the sidebar preview
         # picks the same translation the conversation itself will show.
         reader_profiles={
-            conversation_id: profile_for(members, current_user.id) for conversation_id, members in profiles.items()
+            conversation_id: profile_for(members, user_id) for conversation_id, members in profiles.items()
         },
         reader_tones={conversation_id: settings.translation_tone for conversation_id in conversation_ids},
     )
     unread = await service.get_unread_counts(
-        user_id=current_user.id,
+        user_id=user_id,
         conversation_ids=conversation_ids,
     )
     members = await service.get_members_by_conversation(conversation_ids=conversation_ids)
     preferences = await service.get_member_preferences_for_conversations(
-        user_id=current_user.id,
+        user_id=user_id,
         conversation_ids=conversation_ids,
     )
     return [

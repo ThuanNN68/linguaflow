@@ -1,6 +1,7 @@
 """Intelligence HTTP endpoints."""
 
 import logging
+import uuid
 from collections.abc import Sequence
 
 from fastapi import (
@@ -20,6 +21,7 @@ from src.agents.conversation_intelligence.errors import (
     IntelligenceError,
     IntelligenceErrorCode,
 )
+from src.api.websocket import get_connection_manager
 from src.core.deps import get_current_user
 from src.core.rate_limit import llm_limit
 from src.database import get_db
@@ -29,6 +31,7 @@ from src.database.models import (
     Message,
     User,
 )
+from src.schemas.chat import MessageReceivedEvent, RealtimeMessage
 from src.schemas.intelligence import (
     ActionProposalResponse,
     ClarifyProposalRequest,
@@ -44,15 +47,36 @@ from src.services.intelligence.action_proposals import (
 )
 from src.services.intelligence.conversation_intelligence import ConversationIntelligenceService
 from src.services.messaging.chat import (
+    ChatService,
     ConversationMembershipError,
     ConversationNotFoundError,
     ConversationValidationError,
     MessageNotFoundError,
 )
+from src.services.messaging.connection_manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _empty_appointment_scan_message(*, language: str, days: int, hours: int | None) -> str:
+    """Return a concise, localized assistant result for an empty scan."""
+    if hours is not None:
+        window_en = f"the last {hours} hour{'s' if hours != 1 else ''}"
+        window_vi = f"{hours} giờ gần đây"
+    else:
+        window_en = f"the last {days} day{'s' if days != 1 else ''}"
+        window_vi = f"{days} ngày gần đây"
+    if language == "vi":
+        return (
+            f"Mình đã kiểm tra tối đa 100 tin nhắn trong {window_vi} nhưng không tìm thấy "
+            "lịch hẹn hoặc cuộc họp nào cần tạo."
+        )
+    return (
+        f"I checked up to 100 messages from {window_en}, but did not find any "
+        "appointments or meetings to create."
+    )
 
 
 @router.post(
@@ -177,6 +201,7 @@ async def extract_actions_from_recent_messages_endpoint(
     hours: int | None = Query(default=None, ge=1, le=720),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    manager: ConnectionManager = Depends(get_connection_manager),
 ) -> list[ActionProposalResponse]:
     """Scan a conversation's human messages from the selected time window.
 
@@ -185,13 +210,32 @@ async def extract_actions_from_recent_messages_endpoint(
     """
     service = ConversationIntelligenceService()
     try:
-        return await service.extract_actions_from_recent_messages(
+        proposals = await service.extract_actions_from_recent_messages(
             conversation_id=conversation_id,
             user_id=current_user.id,
             days=days,
             hours=hours,
             db=db,
         )
+        if not proposals:
+            notice_result = await ChatService(db).create_assistant_notice(
+                conversation_id=conversation_id,
+                user_id=current_user.id,
+                text=_empty_appointment_scan_message(
+                    language=current_user.interface_language,
+                    days=days,
+                    hours=hours,
+                ),
+                idempotency_key=f"assistant:appointment-scan-empty:{uuid.uuid4().hex}",
+                source_language=current_user.interface_language,
+            )
+            notice = RealtimeMessage.model_validate(notice_result.message)
+            notice.assistant_generated = True
+            await manager.send_to_user(
+                current_user.id,
+                MessageReceivedEvent(message=notice).model_dump(mode="json"),
+            )
+        return proposals
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation was not found") from exc
     except ConversationMembershipError as exc:
@@ -269,6 +313,10 @@ async def _proposal_responses_with_source_context(
     if not proposals:
         return []
 
+    from sqlalchemy.orm import aliased
+
+    time_source = aliased(Message)
+    details_source = aliased(Message)
     rows = await db.execute(
         select(
             ActionProposal.id,
@@ -277,10 +325,14 @@ async def _proposal_responses_with_source_context(
             User.email,
             Conversation.title,
             Conversation.type,
+            time_source.created_at.label("time_source_at"),
+            details_source.created_at.label("details_source_at"),
         )
         .join(Message, Message.id == ActionProposal.source_message_id)
         .join(User, User.id == Message.sender_id)
         .join(Conversation, Conversation.id == ActionProposal.conversation_id)
+        .outerjoin(time_source, time_source.id == ActionProposal.time_source_message_id)
+        .outerjoin(details_source, details_source.id == ActionProposal.details_source_message_id)
         .where(ActionProposal.id.in_([proposal.id for proposal in proposals]))
     )
     context = {
@@ -288,6 +340,8 @@ async def _proposal_responses_with_source_context(
             "source_sender_name": row.display_name or row.username or row.email,
             "source_conversation_name": row.title,
             "source_conversation_type": row.type,
+            "time_source_at": row.time_source_at,
+            "details_source_at": row.details_source_at,
         }
         for row in rows
     }

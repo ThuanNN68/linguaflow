@@ -267,14 +267,14 @@ describe('MessageComposer regressions', () => {
     expect(onSendMessage).toHaveBeenCalledWith('Normal text', undefined, []);
   });
 
-  it('shows only calendar identification in the assistant attachment menu', () => {
+  it('allows voice requests but keeps generic uploads disabled in the assistant menu', () => {
     installRecorder();
     renderComposer({ assistantMode: true, onCreateAppointment: vi.fn() });
 
     fireEvent.click(screen.getByRole('button', { name: 'Add attachment' }));
 
     expect(screen.getByText('Rà soát lịch hẹn')).toBeDefined();
-    expect(screen.queryByText('Voice message')).toBeNull();
+    expect(screen.getByText('Voice message')).toBeDefined();
     expect(screen.queryByText('Document or File')).toBeNull();
   });
 

@@ -12,7 +12,7 @@ python-multipart>=0.0.9
 # AI / LangChain
 langchain>=0.3.0
 langgraph>=0.2.0
-# LLM providers — xem LLM_PROVIDER trong .env (langchain-openai dùng cho cả OpenAI và DeepSeek)
+# LLM providers — see LLM_PROVIDER in .env (langchain-openai supports both OpenAI and DeepSeek)
 langchain-openai>=0.3.0
 langchain-groq>=0.2.0
 langchain-google-genai>=2.0.0

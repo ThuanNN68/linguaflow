@@ -6,7 +6,7 @@ Revises: c8d4a12f9b73
 
 import sqlalchemy as sa
 
-from alembic import op
+from alembic import context, op
 
 revision = "d1e5b6c2a794"
 down_revision = "c8d4a12f9b73"
@@ -16,6 +16,12 @@ depends_on = None
 
 def upgrade() -> None:
     """Add the Google identity column when a legacy branch omitted it."""
+    # Static SQL generation cannot inspect a live schema. This compatibility
+    # migration follows the branch that already adds `google_sub`, so it has no
+    # SQL to emit for a fresh offline upgrade; the guarded live path remains
+    # responsible for legacy databases that lack the column or index.
+    if context.is_offline_mode():
+        return
     inspector = sa.inspect(op.get_bind())
     columns = {column["name"] for column in inspector.get_columns("users")}
     if "google_sub" not in columns:

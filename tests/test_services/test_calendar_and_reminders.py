@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -26,6 +27,7 @@ from src.services.calendar.calendar import (
     CalendarService,
 )
 from src.services.calendar.reminder_scheduler import scan_due_reminders
+from src.services.messaging.chat import ChatService
 
 
 class Recorder:
@@ -71,17 +73,13 @@ async def proposal(test_db: AsyncSession, test_user, conversation_factory) -> Ac
 
 
 @pytest.mark.asyncio
-async def test_confirming_a_timed_proposal_puts_it_on_the_calendar(
-    test_db: AsyncSession, test_user, proposal
-) -> None:
+async def test_confirming_a_timed_proposal_puts_it_on_the_calendar(test_db: AsyncSession, test_user, proposal) -> None:
     """The gap this phase closes: `confirmed` used to lead nowhere."""
     from src.services.intelligence.action_proposals import ActionProposalService
 
     await ActionProposalService(test_db).confirm_proposal(proposal.id, test_user.id)
 
-    event = await test_db.scalar(
-        select(CalendarEvent).where(CalendarEvent.action_proposal_id == proposal.id)
-    )
+    event = await test_db.scalar(select(CalendarEvent).where(CalendarEvent.action_proposal_id == proposal.id))
     assert event is not None
     assert event.title == "Gửi báo cáo"
     assert event.source == "assistant"
@@ -89,17 +87,13 @@ async def test_confirming_a_timed_proposal_puts_it_on_the_calendar(
 
 
 @pytest.mark.asyncio
-async def test_confirming_also_creates_the_reminder_owed_against_it(
-    test_db: AsyncSession, test_user, proposal
-) -> None:
+async def test_confirming_also_creates_the_reminder_owed_against_it(test_db: AsyncSession, test_user, proposal) -> None:
     """An entry with no nudge is a calendar the user has to remember to read."""
     from src.services.intelligence.action_proposals import ActionProposalService
 
     await ActionProposalService(test_db).confirm_proposal(proposal.id, test_user.id)
 
-    reminder = await test_db.scalar(
-        select(Reminder).where(Reminder.user_id == test_user.id)
-    )
+    reminder = await test_db.scalar(select(Reminder).where(Reminder.user_id == test_user.id))
     assert reminder is not None
     assert reminder.delivered_at is None
 
@@ -108,7 +102,7 @@ async def test_confirming_also_creates_the_reminder_owed_against_it(
 async def test_a_confirmed_proposal_with_no_time_stays_off_the_calendar(
     test_db: AsyncSession, test_user, proposal
 ) -> None:
-    """"I'll review the doc" with no date belongs in the inbox, not on a grid."""
+    """ "I'll review the doc" with no date belongs in the inbox, not on a grid."""
     from src.services.intelligence.action_proposals import ActionProposalService
 
     proposal.scheduled_start_at = None
@@ -118,16 +112,12 @@ async def test_a_confirmed_proposal_with_no_time_stays_off_the_calendar(
 
     await ActionProposalService(test_db).confirm_proposal(proposal.id, test_user.id)
 
-    event = await test_db.scalar(
-        select(CalendarEvent).where(CalendarEvent.action_proposal_id == proposal.id)
-    )
+    event = await test_db.scalar(select(CalendarEvent).where(CalendarEvent.action_proposal_id == proposal.id))
     assert event is None
 
 
 @pytest.mark.asyncio
-async def test_scanning_twice_delivers_a_due_reminder_only_once(
-    test_db: AsyncSession, test_user
-) -> None:
+async def test_scanning_twice_delivers_a_due_reminder_only_once(test_db: AsyncSession, test_user) -> None:
     """The claim is what makes a restart safe to catch up from."""
     import tests.conftest as conftest_module
 
@@ -147,12 +137,8 @@ async def test_scanning_twice_delivers_a_due_reminder_only_once(
     await test_db.commit()
 
     recorder = Recorder()
-    first = await scan_due_reminders(
-        recorder, session_factory=conftest_module.test_async_session_maker
-    )
-    second = await scan_due_reminders(
-        recorder, session_factory=conftest_module.test_async_session_maker
-    )
+    first = await scan_due_reminders(recorder, session_factory=conftest_module.test_async_session_maker)
+    second = await scan_due_reminders(recorder, session_factory=conftest_module.test_async_session_maker)
 
     assert (first, second) == (1, 0)
     assert len(recorder.events) == 1
@@ -162,9 +148,46 @@ async def test_scanning_twice_delivers_a_due_reminder_only_once(
 
 
 @pytest.mark.asyncio
-async def test_a_reminder_that_is_not_due_yet_is_left_alone(
-    test_db: AsyncSession, test_user
+async def test_failed_durable_reminder_delivery_is_left_retryable(
+    test_db: AsyncSession, test_user, monkeypatch
 ) -> None:
+    """A failed Assistant-thread write must not be recorded as delivered."""
+    import tests.conftest as conftest_module
+
+    scheduled = await CalendarService(test_db).create_event(
+        user_id=test_user.id,
+        title="Họp cần thử lại",
+        starts_at=datetime.now(UTC) + timedelta(hours=1),
+        reminder_lead=None,
+    )
+    reminder = Reminder(
+        user_id=test_user.id,
+        calendar_event_id=scheduled.event.id,
+        remind_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    test_db.add(reminder)
+    await test_db.commit()
+    reminder_id = reminder.id
+    monkeypatch.setattr(ChatService, "post_assistant_notice", AsyncMock(return_value=None))
+
+    claimed = await scan_due_reminders(
+        Recorder(),
+        session_factory=conftest_module.test_async_session_maker,
+        now=datetime.now(UTC),
+    )
+
+    await test_db.rollback()
+    stored = await test_db.get(Reminder, reminder_id)
+    assert claimed == 1
+    assert stored.delivered_at is None
+    assert stored.claimed_at is None
+    assert stored.attempts == 1
+    assert stored.next_attempt_at is not None
+    assert stored.last_error == "assistant_notice_failed"
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_that_is_not_due_yet_is_left_alone(test_db: AsyncSession, test_user) -> None:
     """Otherwise every scan would fire everything on the calendar."""
     import tests.conftest as conftest_module
 
@@ -176,18 +199,14 @@ async def test_a_reminder_that_is_not_due_yet_is_left_alone(
     assert scheduled.reminders
 
     recorder = Recorder()
-    claimed = await scan_due_reminders(
-        recorder, session_factory=conftest_module.test_async_session_maker
-    )
+    claimed = await scan_due_reminders(recorder, session_factory=conftest_module.test_async_session_maker)
 
     assert claimed == 0
     assert recorder.events == []
 
 
 @pytest.mark.asyncio
-async def test_a_lead_time_already_in_the_past_creates_no_reminder(
-    test_db: AsyncSession, test_user
-) -> None:
+async def test_a_lead_time_already_in_the_past_creates_no_reminder(test_db: AsyncSession, test_user) -> None:
     """Firing the instant an entry is saved is noise, not a reminder."""
     scheduled = await CalendarService(test_db).create_event(
         user_id=test_user.id,
@@ -200,9 +219,7 @@ async def test_a_lead_time_already_in_the_past_creates_no_reminder(
 
 
 @pytest.mark.asyncio
-async def test_cancelling_an_entry_silences_its_undelivered_reminders(
-    test_db: AsyncSession, test_user
-) -> None:
+async def test_cancelling_an_entry_silences_its_undelivered_reminders(test_db: AsyncSession, test_user) -> None:
     """A nudge about a meeting that is off is worse than no nudge."""
     import tests.conftest as conftest_module
 
@@ -211,14 +228,10 @@ async def test_cancelling_an_entry_silences_its_undelivered_reminders(
         title="Sẽ huỷ",
         starts_at=datetime.now(UTC) + timedelta(hours=2),
     )
-    await CalendarService(test_db).cancel_event(
-        user_id=test_user.id, event_id=scheduled.event.id
-    )
+    await CalendarService(test_db).cancel_event(user_id=test_user.id, event_id=scheduled.event.id)
 
     recorder = Recorder()
-    await scan_due_reminders(
-        recorder, session_factory=conftest_module.test_async_session_maker
-    )
+    await scan_due_reminders(recorder, session_factory=conftest_module.test_async_session_maker)
 
     assert recorder.events == []
 
@@ -250,6 +263,4 @@ async def test_reaching_another_persons_entry_by_id_reads_as_not_found(
     )
 
     with pytest.raises(CalendarEventNotFoundError):
-        await CalendarService(test_db).get_event(
-            user_id=test_user_two.id, event_id=scheduled.event.id
-        )
+        await CalendarService(test_db).get_event(user_id=test_user_two.id, event_id=scheduled.event.id)

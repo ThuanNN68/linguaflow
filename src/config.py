@@ -177,7 +177,7 @@ class Settings(BaseSettings):
 
     # Embeddings (ADR-25). pgvector stores and compares the vectors; something
     # still has to produce them, and the requirement that decides the choice is
-    # multilingual reach: unless "staging env" and "môi trường stg" land near
+    # multilingual reach: unless "staging env" and "staging environment" land near
     # each other, grouping corrections by meaning is pointless.
     #
     # `local` runs sentence-transformers in-process — no quota, and no message
@@ -307,7 +307,8 @@ class Settings(BaseSettings):
     upload_dir: str = "./data/uploads"
     max_upload_size_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     supabase_url: str = ""
-    supabase_service_role_key: str = ""
+    # Supabase server-only credential; it must never be exposed to a browser.
+    supabase_secret_key: str = ""
     supabase_storage_bucket: str = "attachments"
     s3_bucket: str = ""
     s3_region: str = "us-east-1"
@@ -517,6 +518,11 @@ class Settings(BaseSettings):
         if self.assistant_embedding_model:
             return provider, self.assistant_embedding_model
         return provider, (self.embedding_model if provider == self.embedding_provider else "")
+
+    @property
+    def supabase_server_key(self) -> str:
+        """Return the Supabase server credential, if configured."""
+        return self.supabase_secret_key.strip()
 
 
 def _force_utf8_streams() -> None:
