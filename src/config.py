@@ -308,7 +308,13 @@ class Settings(BaseSettings):
     max_upload_size_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     supabase_url: str = ""
     # Supabase server-only credential; it must never be exposed to a browser.
-    supabase_secret_key: str = ""
+    # ``SUPABASE_SECRET_KEY`` is the canonical name.  Keep the historical
+    # ``SUPABASE_SERVICE_ROLE_KEY`` alias so existing Render environments do
+    # not fail during startup after the storage validation was tightened.
+    supabase_secret_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"),
+    )
     supabase_storage_bucket: str = "attachments"
     s3_bucket: str = ""
     s3_region: str = "us-east-1"
