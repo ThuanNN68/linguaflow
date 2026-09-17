@@ -83,7 +83,7 @@ sentence-transformers>=3.0.0
 apscheduler>=3.10.0
 # Cross-platform RSS metric for the admin system-health endpoint. Linux still
 # uses /proc first, while Windows relies on this portable fallback.
-psutil>=6.0.0
+psutil>=7.2.2
 # Optional cross-process WebSocket pub/sub backplane (activated by REDIS_URL).
 redis>=5.2.0,<6.0.0
 
