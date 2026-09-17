@@ -104,7 +104,7 @@ google-auth>=2.0.0
 # Python, chay offline, khong ton quota — dung de bo sung cho diem LLM-judge
 # chu khong thay the no (ADR-17).
 sacrebleu>=2.4.0
-ruff>=0.8.0
+ruff>=0.16.7
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
 httpx>=0.28.0
